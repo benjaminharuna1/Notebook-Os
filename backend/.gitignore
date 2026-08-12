@@ -1,0 +1,8 @@
+data/uploads/*
+data/processed/*
+data/chroma_db/*
+data/notebook.db
+.env
+__pycache__/
+*.pyc
+.venv/

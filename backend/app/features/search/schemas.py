@@ -1,0 +1,21 @@
+from pydantic import BaseModel
+from typing import List, Optional
+
+
+class SearchRequest(BaseModel):
+    query: str
+    top_k: int = 5
+    document_ids: Optional[List[str]] = None
+
+
+class SearchResult(BaseModel):
+    chunk_id: str
+    content: str
+    score: float
+    document_id: str
+    document_title: str
+    page_number: int
+
+
+class SearchResponse(BaseModel):
+    results: List[SearchResult]

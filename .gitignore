@@ -1,0 +1,23 @@
+# Backend
+backend/data/uploads/*
+backend/data/processed/*
+backend/data/chroma_db/*
+backend/data/notebook.db
+backend/.env
+backend/__pycache__/
+backend/.venv/
+
+# Frontend
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

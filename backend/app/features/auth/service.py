@@ -1,0 +1,90 @@
+import json
+
+from fastapi import HTTPException, Response, status
+
+from app.core.security import create_jwt, hash_password, verify_password
+from app.features.auth.schemas import AuthResponse, LoginRequest, RegisterRequest
+from app.shared.id_utils import generate_id
+
+DEFAULT_SETTINGS = {
+    "chunk_size": 1024,
+    "chunk_overlap": 128,
+    "default_llm": "llama3.2:3b",
+    "default_embedding_model": "nomic-embed-text",
+    "provider": "ollama",
+    "openai_api_key": "",
+    "anthropic_api_key": "",
+    "google_api_key": "",
+    "openai_model": "gpt-4o",
+    "anthropic_model": "claude-sonnet-4-20250514",
+    "google_model": "gemini-2.0-flash",
+    "ollama_model": "llama3.2:3b",
+    "max_tokens": 2048,
+    "temperature": 0.7,
+}
+
+
+class AuthService:
+    def __init__(self, db):
+        self.db = db
+
+    def register(self, req: RegisterRequest) -> AuthResponse:
+        cursor = self.db.cursor()
+
+        cursor.execute("SELECT id FROM users WHERE email = ?", (req.email,))
+        if cursor.fetchone():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+
+        cursor.execute("SELECT id FROM users WHERE username = ?", (req.username,))
+        if cursor.fetchone():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already taken")
+
+        user_id = generate_id()
+        password_hash = hash_password(req.password)
+
+        cursor.execute(
+            "INSERT INTO users (id, email, username, password_hash) VALUES (?, ?, ?, ?)",
+            (user_id, req.email, req.username, password_hash),
+        )
+
+        cursor.execute(
+            "INSERT INTO user_settings (user_id, settings) VALUES (?, ?)",
+            (user_id, json.dumps(DEFAULT_SETTINGS)),
+        )
+
+        self.db.commit()
+
+        token = create_jwt(user_id)
+        return AuthResponse(
+            token=token,
+            user={"id": user_id, "email": req.email, "username": req.username},
+        )
+
+    def login(self, req: LoginRequest, response: Response) -> AuthResponse:
+        cursor = self.db.cursor()
+        cursor.execute(
+            "SELECT id, email, username, password_hash FROM users WHERE email = ?",
+            (req.email,),
+        )
+        row = cursor.fetchone()
+
+        if not row or not verify_password(req.password, row["password_hash"]):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password",
+            )
+
+        token = create_jwt(row["id"])
+
+        response.set_cookie(
+            key="access_token",
+            value=token,
+            httponly=True,
+            max_age=86400,
+            samesite="lax",
+        )
+
+        return AuthResponse(
+            token=token,
+            user={"id": row["id"], "email": row["email"], "username": row["username"]},
+        )

@@ -1,0 +1,82 @@
+<script lang="ts">
+  import { goto } from '$app/navigation';
+  import { register } from '$lib/features/auth/api';
+  import { currentUser, token } from '$lib/features/auth/store';
+
+  let email = $state('');
+  let username = $state('');
+  let password = $state('');
+  let error = $state('');
+  let loading = $state(false);
+
+  async function handleRegister() {
+    if (!email || !username || !password) return;
+    loading = true;
+    error = '';
+    try {
+      const res = await register(email, username, password);
+      token.set(res.token);
+      currentUser.set(res.user);
+      goto('/chat');
+    } catch (e) {
+      error = (e as Error).message;
+    } finally {
+      loading = false;
+    }
+  }
+</script>
+
+<div class="flex min-h-screen items-center justify-center bg-slate-50">
+  <div class="w-full max-w-sm rounded-xl bg-white p-8 shadow-sm">
+    <h1 class="mb-6 text-2xl font-bold text-slate-900">Create Account</h1>
+
+    {#if error}
+      <div class="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>
+    {/if}
+
+    <form onsubmit={(e) => { e.preventDefault(); handleRegister(); }} class="space-y-4">
+      <div>
+        <label for="email" class="mb-1 block text-sm font-medium text-slate-700">Email</label>
+        <input
+          id="email"
+          type="email"
+          bind:value={email}
+          class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm outline-none focus:border-indigo-500"
+          required
+        />
+      </div>
+      <div>
+        <label for="username" class="mb-1 block text-sm font-medium text-slate-700">Username</label>
+        <input
+          id="username"
+          type="text"
+          bind:value={username}
+          class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm outline-none focus:border-indigo-500"
+          required
+        />
+      </div>
+      <div>
+        <label for="password" class="mb-1 block text-sm font-medium text-slate-700">Password</label>
+        <input
+          id="password"
+          type="password"
+          bind:value={password}
+          class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm outline-none focus:border-indigo-500"
+          required
+        />
+      </div>
+      <button
+        type="submit"
+        {disabled}
+        class="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+      >
+        {loading ? 'Creating account...' : 'Create Account'}
+      </button>
+    </form>
+
+    <p class="mt-4 text-center text-sm text-slate-500">
+      Already have an account?
+      <a href="/auth/login" class="text-indigo-600 hover:underline">Sign in</a>
+    </p>
+  </div>
+</div>
