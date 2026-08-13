@@ -21,12 +21,31 @@ class ChatService:
 
     async def stream_chat(self, req, user_id: str):
         session_id = req.session_id or generate_id()
-        if not req.session_id:
-            self.repo.create_session(session_id, user_id, "New Chat")
+
+        # A chat always belongs to a project. Existing sessions keep theirs;
+        # new sessions require one up front so search stays scoped.
+        if req.session_id:
+            session = self.repo.get_session(req.session_id, user_id)
+            if not session:
+                raise self._not_found("Session not found")
+            project_id = session["project_id"] or req.project_id
+        else:
+            project_id = req.project_id
+            if project_id:
+                self._require_project(user_id, project_id)
+            self.repo.create_session(session_id, user_id, "New Chat", project_id=project_id)
 
         self.repo.add_message(session_id, "user", req.message)
 
-        search_results = await self.search_service.search(req, user_id)
+        from app.features.search.schemas import SearchRequest
+
+        search_req = SearchRequest(
+            query=req.message,
+            top_k=req.top_k if hasattr(req, "top_k") else 5,
+            document_ids=req.document_ids,
+            project_id=project_id,
+        )
+        search_results = await self.search_service.search(search_req, user_id)
         sources = search_results.results
 
         model = self.model_service.get_active_model(user_id)
@@ -65,8 +84,8 @@ class ChatService:
 
         return StreamingResponse(generate(), media_type="text/event-stream")
 
-    def list_sessions(self, user_id: str):
-        return {"sessions": self.repo.list_sessions(user_id)}
+    def list_sessions(self, user_id: str, project_id: str | None = None):
+        return {"sessions": self.repo.list_sessions(user_id, project_id)}
 
     def get_session(self, session_id: str, user_id: str):
         session = self.repo.get_session(session_id, user_id)
@@ -76,3 +95,17 @@ class ChatService:
     def delete_session(self, session_id: str, user_id: str):
         self.repo.delete_session(session_id, user_id)
         return {"success": True}
+
+    @staticmethod
+    def _not_found(message: str, status_code: int = 404):
+        from app.core.exceptions import AppException
+
+        return AppException(message, status_code=status_code)
+
+    def _require_project(self, user_id: str, project_id: str):
+        row = self.db.execute(
+            "SELECT id FROM projects WHERE id = ? AND user_id = ?",
+            (project_id, user_id),
+        ).fetchone()
+        if not row:
+            raise self._not_found("Project not found")

@@ -6,6 +6,7 @@ class SearchRequest(BaseModel):
     query: str
     top_k: int = 5
     document_ids: Optional[List[str]] = None
+    project_id: Optional[str] = None
 
 
 class SearchResult(BaseModel):

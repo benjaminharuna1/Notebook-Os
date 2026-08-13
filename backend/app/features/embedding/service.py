@@ -12,7 +12,13 @@ class EmbeddingService:
         self.settings_dict = settings_dict or {}
         self.provider = resolve_embedding_provider(self.settings_dict)
 
-    def embed_chunks(self, chunks: List[dict], document_id: str, user_id: str):
+    def embed_chunks(
+        self,
+        chunks: List[dict],
+        document_id: str,
+        user_id: str,
+        project_id: str | None = None,
+    ):
         texts = [c["content"] for c in chunks]
         embeddings = self.provider.embed(texts)
 
@@ -31,5 +37,8 @@ class EmbeddingService:
             }
             for c in chunks
         ]
+        if project_id:
+            for meta in metadatas:
+                meta["project_id"] = project_id
 
         collection.add(ids=ids, embeddings=embeddings, metadatas=metadatas, documents=texts)

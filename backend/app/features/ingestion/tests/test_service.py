@@ -1,6 +1,7 @@
 import sqlite3
 import threading
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -13,9 +14,10 @@ from app.features.ingestion.service import IngestionService
 def _db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    conn.execute(
-        """CREATE TABLE documents (
-            id TEXT PRIMARY KEY, user_id TEXT, title TEXT,
+    conn.executescript(
+        """CREATE TABLE projects (id TEXT PRIMARY KEY, user_id TEXT, name TEXT);
+        CREATE TABLE documents (
+            id TEXT PRIMARY KEY, user_id TEXT, project_id TEXT, title TEXT,
             filename TEXT, file_path TEXT, file_type TEXT, file_size INTEGER, page_count INTEGER,
             status TEXT, error TEXT, indexed_at TEXT)"""
     )
@@ -166,7 +168,7 @@ class _FakeEmbeddingService:
     def __init__(self, settings_dict=None):
         pass
 
-    def embed_chunks(self, chunks, document_id, user_id):
+    def embed_chunks(self, chunks, document_id, user_id, project_id=None):
         pass
 
 
@@ -188,7 +190,7 @@ async def test_ingest_queues_then_pipeline_indexes(monkeypatch, tmp_path):
         c.row_factory = sqlite3.Row
         c.execute(
             """CREATE TABLE IF NOT EXISTS documents (
-                id TEXT PRIMARY KEY, user_id TEXT, title TEXT,
+                id TEXT PRIMARY KEY, user_id TEXT, project_id TEXT, title TEXT,
                 filename TEXT, file_path TEXT, file_type TEXT, file_size INTEGER, page_count INTEGER,
                 status TEXT, error TEXT, indexed_at TEXT)"""
         )
@@ -229,6 +231,42 @@ async def test_ingest_queues_then_pipeline_indexes(monkeypatch, tmp_path):
     row = conn.execute("SELECT title, page_count FROM documents WHERE id = ?", (resp.document_id,)).fetchone()
     assert row["title"] == "Report"
     assert row["page_count"] == 3
+
+
+# --- project scoping --------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ingest_rejects_unknown_project():
+    conn = _db()
+    service = IngestionService(conn)
+    with pytest.raises(AppException) as excinfo:
+        await service.ingest(_FakeFile("c.pdf", b"data"), "u1", project_id="nope")
+    assert excinfo.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_ingest_scopes_file_to_project_folder(monkeypatch, tmp_path):
+    conn = _db()
+    conn.execute("INSERT INTO projects VALUES ('p1', 'u1', 'Proj')")
+    conn.commit()
+
+    monkeypatch.setattr(
+        "app.features.ingestion.service.settings",
+        SimpleNamespace(UPLOAD_DIR=str(tmp_path), MAX_UPLOAD_SIZE_MB=25),
+    )
+    monkeypatch.setattr("app.features.ingestion.service.job_manager.submit", lambda *a, **k: None)
+
+    service = IngestionService(conn)
+    resp = await service.ingest(_FakeFile("b.pdf", b"%PDF tiny"), "u1", project_id="p1")
+
+    row = conn.execute(
+        "SELECT file_path, project_id FROM documents WHERE id = ?", (resp.document_id,)
+    ).fetchone()
+    expected = str(tmp_path / "projects" / "p1" / f"{resp.document_id}.pdf")
+    assert row["file_path"] == expected
+    assert row["project_id"] == "p1"
+    assert Path(expected).exists()
 
 
 # --- helpers --------------------------------------------------------------

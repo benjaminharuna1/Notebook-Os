@@ -7,7 +7,7 @@
   import { toasts } from '$lib/core/stores/toasts';
   import type { ChatMessage as ChatMessageType } from '../types';
 
-  let { sessionId: urlSessionId }: { sessionId?: string } = $props();
+  let { sessionId: urlSessionId, projectId }: { sessionId?: string; projectId?: string } = $props();
 
   let sessionId = $state<string | null>(null);
 
@@ -19,6 +19,13 @@
       toasts.add('Could not load session', 'error');
     }
   }
+
+  $effect(() => {
+    if (projectId) {
+      sessionId = null;
+      messages.set([]);
+    }
+  });
 
   $effect(() => {
     if (urlSessionId) {
@@ -65,6 +72,7 @@
     streamChat(
       sessionId || undefined,
       text,
+      projectId,
       (chunk) => {
         messages.update((m) => {
           const last = m[m.length - 1];
@@ -78,7 +86,8 @@
         streaming.set(false);
         if (sid) {
           if (!sessionId) sessionId = sid;
-          if (urlSessionId !== sid) goto(`/chat/${sid}`);
+          const path = projectId ? `/projects/${projectId}/chat/${sid}` : `/chat/${sid}`;
+          if (urlSessionId !== sid) goto(path);
         }
       },
       failAssistant,

@@ -3,9 +3,10 @@ import { api, BASE_URL } from '$lib/core/api/client';
 import { token } from '$lib/features/auth/store';
 import type { IngestionResponse, IngestionStatus } from './types';
 
-export async function uploadFile(file: File): Promise<IngestionResponse> {
+export async function uploadFile(file: File, projectId?: string): Promise<IngestionResponse> {
   const formData = new FormData();
   formData.append('file', file);
+  if (projectId) formData.append('project_id', projectId);
 
   const authToken = get(token);
   const response = await fetch(`${BASE_URL}/ingest/file`, {

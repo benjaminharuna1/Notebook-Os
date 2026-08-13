@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import StatusBadge from '$lib/core/components/StatusBadge.svelte';
   import { listDocuments, deleteDocument } from '../api';
   import { pauseIngestion, resumeIngestion, reprocessIngestion } from '$lib/features/ingestion/api';
   import type { Document } from '../types';
+
+  let { projectId }: { projectId?: string } = $props();
 
   let docs: Document[] = $state([]);
   let total = $state(0);
@@ -12,20 +13,18 @@
 
   const ACTIVE = ['queued', 'processing', 'paused'];
 
-  onMount(async () => {
-    await loadDocs();
-    const timer = setInterval(() => {
-      if (docs.some((d) => ACTIVE.includes(d.status))) loadDocs();
-    }, 2500);
-    return () => clearInterval(timer);
-  });
-
   async function loadDocs() {
-    const result = await listDocuments({ page });
+    const result = await listDocuments({ page, project_id: projectId });
     docs = result.documents;
     total = result.total;
     loading = false;
   }
+
+  $effect(() => {
+    loadDocs();
+    const timer = setInterval(() => loadDocs(), 2500);
+    return () => clearInterval(timer);
+  });
 
   async function handleDelete(id: string) {
     await deleteDocument(id);

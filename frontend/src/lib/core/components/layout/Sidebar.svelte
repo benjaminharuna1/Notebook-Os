@@ -7,6 +7,7 @@
   import type { ChatSession } from '$lib/features/chat/types';
 
   const links = [
+    { href: '/projects', label: 'Projects', icon: '📁' },
     { href: '/chat', label: 'Chat', icon: '💬' },
     { href: '/library', label: 'Library', icon: '📚' },
     { href: '/search', label: 'Search', icon: '🔍' },
@@ -17,9 +18,16 @@
 
   let sessions = $state<ChatSession[]>([]);
 
+  const projectChatPath = $derived.by(() => {
+    const m = /^\/projects\/([^/]+)\/chat/.exec($page.url.pathname);
+    return m ? m[1] : null;
+  });
+
+  const sessionsBase = $derived(projectChatPath ? `/projects/${projectChatPath}/chat` : '/chat');
+
   async function refreshSessions() {
     try {
-      const res = await listSessions();
+      const res = await listSessions(projectChatPath ?? undefined);
       sessions = res.sessions;
     } catch {
       sessions = [];
@@ -27,20 +35,20 @@
   }
 
   $effect(() => {
-    if ($page.url.pathname.startsWith('/chat')) {
+    if ($page.url.pathname.startsWith('/chat') || projectChatPath) {
       refreshSessions();
     }
   });
 
   async function newChat() {
-    goto('/chat');
+    goto(sessionsBase);
   }
 
   async function removeSession(id: string) {
     await deleteSession(id);
     sessions = sessions.filter((s) => s.id !== id);
     if ($page.url.pathname.endsWith(id)) {
-      goto('/chat');
+      goto(sessionsBase);
     }
   }
 
@@ -71,7 +79,7 @@
     {/each}
   </nav>
 
-  {#if $page.url.pathname.startsWith('/chat')}
+  {#if $page.url.pathname.startsWith('/chat') || projectChatPath}
     <div class="flex items-center justify-between px-4 pt-2 pb-1">
       <span class="text-xs font-medium uppercase text-slate-400">Sessions</span>
       <button
@@ -89,7 +97,7 @@
         {#each sessions as s (s.id)}
           <div class="group flex items-center">
             <a
-              href={`/chat/${s.id}`}
+              href={`${sessionsBase}/${s.id}`}
               class="flex-1 truncate rounded-lg px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 {$page.url.pathname.endsWith(s.id)
                 ? 'bg-indigo-50 text-indigo-700 font-medium'
                 : ''}"

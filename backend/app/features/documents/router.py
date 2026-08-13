@@ -14,11 +14,19 @@ async def list_documents(
     limit: int = Query(20, ge=1, le=100),
     search: str = Query(""),
     file_type: str = Query(""),
+    project_id: str = Query(""),
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
     service = DocumentService(db)
-    return service.list_documents(current_user["id"], page=page, limit=limit, search=search, file_type=file_type)
+    return service.list_documents(
+        current_user["id"],
+        page=page,
+        limit=limit,
+        search=search,
+        file_type=file_type,
+        project_id=project_id or None,
+    )
 
 
 @router.get("/documents/{document_id}")

@@ -3,6 +3,7 @@
   import { getSettings, updateSettings, getLocalStatus, getCatalog } from '$lib/features/settings/api';
   import type { LocalStatus, ModelCatalog, UserSettings } from '$lib/features/settings/types';
   import Header from '$lib/core/components/layout/Header.svelte';
+  import PasswordInput from '$lib/core/components/ui/PasswordInput.svelte';
   import { toasts } from '$lib/core/stores/toasts';
 
   let settings = $state<UserSettings>({} as UserSettings);
@@ -133,7 +134,7 @@
               </div>
               <div>
                 <label class="mb-1 block text-sm font-medium text-slate-700">OpenAI API Key</label>
-                <input type="password" bind:value={settings.openai_api_key} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" placeholder="sk-..." />
+                <PasswordInput bind:value={settings.openai_api_key} placeholder="sk-..." />
               </div>
               <div>
                 <label class="mb-1 block text-sm font-medium text-slate-700">Anthropic Model</label>
@@ -141,7 +142,7 @@
               </div>
               <div>
                 <label class="mb-1 block text-sm font-medium text-slate-700">Anthropic API Key</label>
-                <input type="password" bind:value={settings.anthropic_api_key} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" placeholder="sk-ant-..." />
+                <PasswordInput bind:value={settings.anthropic_api_key} placeholder="sk-ant-..." />
               </div>
               <div>
                 <label class="mb-1 block text-sm font-medium text-slate-700">Google Model</label>
@@ -149,7 +150,7 @@
               </div>
               <div>
                 <label class="mb-1 block text-sm font-medium text-slate-700">Google API Key</label>
-                <input type="password" bind:value={settings.google_api_key} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" placeholder="AIza..." />
+                <PasswordInput bind:value={settings.google_api_key} placeholder="AIza..." />
               </div>
             </div>
           {:else}

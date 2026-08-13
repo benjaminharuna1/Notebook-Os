@@ -7,6 +7,7 @@ class ChatRequest(BaseModel):
     message: str
     model: Optional[str] = None
     document_ids: Optional[List[str]] = None
+    project_id: Optional[str] = None
 
 
 class ChatMessage(BaseModel):
@@ -23,5 +24,6 @@ class ChatSession(BaseModel):
     id: str
     title: Optional[str] = None
     model_used: Optional[str] = None
+    project_id: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None

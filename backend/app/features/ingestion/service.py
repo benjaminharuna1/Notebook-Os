@@ -29,7 +29,7 @@ class IngestionService:
         self.settings_dict = settings_dict or {}
         self.extractors = {"pdf": PDFExtractor()}
 
-    async def ingest(self, file, user_id: str) -> IngestionResponse:
+    async def ingest(self, file, user_id: str, project_id: str | None = None) -> IngestionResponse:
         """Validate + persist the file, then queue it for background processing."""
         content = await file.read()
 
@@ -47,8 +47,13 @@ class IngestionService:
                 status_code=400,
             )
 
+        project_id = self._require_project(user_id, project_id)
+
         doc_id = generate_id()
-        upload_dir = ensure_dir(settings.UPLOAD_DIR)
+        if project_id:
+            upload_dir = ensure_dir(Path(settings.UPLOAD_DIR) / "projects" / project_id)
+        else:
+            upload_dir = ensure_dir(settings.UPLOAD_DIR)
         # Stored name is fully server-controlled to prevent path traversal
         stored_name = f"{doc_id}.{ext}"
         file_path = str(upload_dir / stored_name)
@@ -57,9 +62,9 @@ class IngestionService:
 
         cursor = self.db.cursor()
         cursor.execute(
-            """INSERT INTO documents (id, user_id, title, filename, file_path, file_type, file_size, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'queued')""",
-            (doc_id, user_id, original_name, original_name, file_path, ext, len(content)),
+            """INSERT INTO documents (id, user_id, project_id, title, filename, file_path, file_type, file_size, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued')""",
+            (doc_id, user_id, project_id, original_name, original_name, file_path, ext, len(content)),
         )
         self.db.commit()
 
@@ -113,7 +118,7 @@ class IngestionService:
             for start in range(0, len(chunks), batch_size):
                 job_manager.checkpoint(doc_id)
                 batch = chunks[start : start + batch_size]
-                embedding.embed_chunks(batch, doc_id, user_id)
+                embedding.embed_chunks(batch, doc_id, user_id, project_id=row["project_id"])
                 job_manager.set_progress(doc_id, len(chunks), start + len(batch))
 
             conn.execute(
@@ -188,6 +193,17 @@ class IngestionService:
         )
 
     # --- helpers ---------------------------------------------------------
+
+    def _require_project(self, user_id: str, project_id: str | None) -> str | None:
+        if not project_id:
+            return None
+        row = self.db.execute(
+            "SELECT id FROM projects WHERE id = ? AND user_id = ?",
+            (project_id, user_id),
+        ).fetchone()
+        if not row:
+            raise AppException("Project not found", status_code=404)
+        return project_id
 
     @staticmethod
     def _set_status(conn, document_id: str, status: str) -> None:

@@ -35,9 +35,19 @@ def init_sqlite_db():
             settings  TEXT NOT NULL DEFAULT '{}'
         );
 
+        CREATE TABLE IF NOT EXISTS projects (
+            id          TEXT PRIMARY KEY,
+            user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name        TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS documents (
             id          TEXT PRIMARY KEY,
             user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,
             title       TEXT NOT NULL,
             filename    TEXT NOT NULL,
             file_path   TEXT NOT NULL,
@@ -51,6 +61,8 @@ def init_sqlite_db():
             status      TEXT DEFAULT 'pending',
             error       TEXT
         );
+
+        CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id);
 
         CREATE TABLE IF NOT EXISTS chunks (
             id          TEXT PRIMARY KEY,
@@ -68,11 +80,14 @@ def init_sqlite_db():
         CREATE TABLE IF NOT EXISTS chat_sessions (
             id          TEXT PRIMARY KEY,
             user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,
             title       TEXT,
             model_used  TEXT,
             created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id);
 
         CREATE TABLE IF NOT EXISTS chat_messages (
             id          TEXT PRIMARY KEY,
@@ -105,11 +120,17 @@ def init_sqlite_db():
         );
     """)
 
-    # Lightweight migration for databases created before the `error` column.
-    try:
-        cursor.execute("ALTER TABLE documents ADD COLUMN error TEXT")
-    except sqlite3.OperationalError:
-        pass
+    # Lightweight migrations for databases created before these columns existed.
+    migrations = [
+        ("ALTER TABLE documents ADD COLUMN error TEXT", None),
+        ("ALTER TABLE documents ADD COLUMN project_id TEXT", None),
+        ("ALTER TABLE chat_sessions ADD COLUMN project_id TEXT", None),
+    ]
+    for statement, _ in migrations:
+        try:
+            cursor.execute(statement)
+        except sqlite3.OperationalError:
+            pass
 
     conn.commit()
     conn.close()

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from app.core.dependencies import get_current_user, get_db
 from app.features.ingestion.schemas import IngestionResponse, IngestionStatus
@@ -11,13 +11,14 @@ router = APIRouter(tags=["ingestion"])
 @router.post("/ingest/file", response_model=IngestionResponse)
 async def ingest_file(
     file: UploadFile = File(...),
+    project_id: str = Form(""),
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
     settings_service = SettingsService(db)
     user_settings = settings_service.get_settings(current_user["id"]).settings
     service = IngestionService(db, settings_dict=user_settings)
-    return await service.ingest(file, current_user["id"])
+    return await service.ingest(file, current_user["id"], project_id=project_id or None)
 
 
 @router.get("/ingest/status/{document_id}", response_model=IngestionStatus)

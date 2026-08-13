@@ -5,20 +5,26 @@ class ChatRepository:
     def __init__(self, db):
         self.db = db
 
-    def create_session(self, session_id: str, user_id: str, title: str):
+    def create_session(self, session_id: str, user_id: str, title: str, project_id: str | None = None):
         cursor = self.db.cursor()
         cursor.execute(
-            "INSERT INTO chat_sessions (id, user_id, title) VALUES (?, ?, ?)",
-            (session_id, user_id, title),
+            "INSERT INTO chat_sessions (id, user_id, project_id, title) VALUES (?, ?, ?, ?)",
+            (session_id, user_id, project_id, title),
         )
         self.db.commit()
 
-    def list_sessions(self, user_id: str):
+    def list_sessions(self, user_id: str, project_id: str | None = None):
         cursor = self.db.cursor()
-        cursor.execute(
-            "SELECT * FROM chat_sessions WHERE user_id = ? ORDER BY updated_at DESC",
-            (user_id,),
-        )
+        if project_id:
+            cursor.execute(
+                "SELECT * FROM chat_sessions WHERE user_id = ? AND project_id = ? ORDER BY updated_at DESC",
+                (user_id, project_id),
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM chat_sessions WHERE user_id = ? ORDER BY updated_at DESC",
+                (user_id,),
+            )
         return [dict(r) for r in cursor.fetchall()]
 
     def get_session(self, session_id: str, user_id: str):

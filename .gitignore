@@ -22,3 +22,8 @@ package-lock.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+backend/backend.err.log
+frontend/frontend.err.log

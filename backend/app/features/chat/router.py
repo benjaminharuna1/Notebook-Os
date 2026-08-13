@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.core.dependencies import get_current_user, get_db
 from app.features.chat.schemas import ChatRequest
@@ -22,11 +22,12 @@ async def chat(
 
 @router.get("/chat/sessions")
 async def list_sessions(
+    project_id: str = Query(""),
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
     service = ChatService(db)
-    return service.list_sessions(current_user["id"])
+    return service.list_sessions(current_user["id"], project_id or None)
 
 
 @router.get("/chat/sessions/{session_id}")

@@ -30,6 +30,8 @@ class SearchService:
         collection = chroma.get_or_create_collection(name=collection_name)
 
         where = {"user_id": user_id}
+        if req.project_id:
+            where["project_id"] = req.project_id
         if req.document_ids:
             where["document_id"] = {"$in": req.document_ids}
 

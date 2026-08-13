@@ -6,8 +6,16 @@ class DocumentService:
     def __init__(self, db):
         self.repo = DocumentRepository(db)
 
-    def list_documents(self, user_id: str, page: int, limit: int, search: str = "", file_type: str = ""):
-        return self.repo.list_documents(user_id, page, limit, search, file_type)
+    def list_documents(
+        self,
+        user_id: str,
+        page: int,
+        limit: int,
+        search: str = "",
+        file_type: str = "",
+        project_id: str | None = None,
+    ):
+        return self.repo.list_documents(user_id, page, limit, search, file_type, project_id)
 
     def get_document(self, document_id: str, user_id: str):
         doc = self.repo.get_by_id(document_id, user_id)

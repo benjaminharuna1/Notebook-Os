@@ -5,11 +5,22 @@ class DocumentRepository:
     def __init__(self, db):
         self.db = db
 
-    def list_documents(self, user_id: str, page: int, limit: int, search: str = "", file_type: str = ""):
+    def list_documents(
+        self,
+        user_id: str,
+        page: int,
+        limit: int,
+        search: str = "",
+        file_type: str = "",
+        project_id: str | None = None,
+    ):
         cursor = self.db.cursor()
         conditions = ["user_id = ?"]
         params = [user_id]
 
+        if project_id:
+            conditions.append("project_id = ?")
+            params.append(project_id)
         if search:
             conditions.append("title LIKE ?")
             params.append(f"%{search}%")

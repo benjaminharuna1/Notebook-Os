@@ -2,6 +2,8 @@
   import { uploadFile } from '../api';
   import { uploadQueue } from '../store';
 
+  let { projectId }: { projectId?: string } = $props();
+
   const MAX_SIZE_MB = 25;
 
   let dragging = $state(false);
@@ -18,7 +20,7 @@
         continue;
       }
       try {
-        const res = await uploadFile(file);
+        const res = await uploadFile(file, projectId);
         uploadQueue.patch(id, { documentId: res.document_id, status: 'processing' });
       } catch (err) {
         uploadQueue.patch(id, { status: 'error', error: (err as Error).message });

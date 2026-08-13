@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import { login } from '$lib/features/auth/api';
   import { currentUser, token } from '$lib/features/auth/store';
+  import PasswordInput from '$lib/core/components/ui/PasswordInput.svelte';
 
   let email = $state('');
   let password = $state('');
@@ -46,17 +47,17 @@
       </div>
       <div>
         <label for="password" class="mb-1 block text-sm font-medium text-slate-700">Password</label>
-        <input
+        <PasswordInput
           id="password"
-          type="password"
           bind:value={password}
-          class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm outline-none focus:border-indigo-500"
+          placeholder="Password"
           required
+          class="px-4 py-2 focus:border-indigo-500"
         />
       </div>
       <button
         type="submit"
-        {disabled}
+        disabled={loading}
         class="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
       >
         {loading ? 'Signing in...' : 'Sign In'}
