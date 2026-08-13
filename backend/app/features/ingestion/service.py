@@ -118,7 +118,13 @@ class IngestionService:
             for start in range(0, len(chunks), batch_size):
                 job_manager.checkpoint(doc_id)
                 batch = chunks[start : start + batch_size]
-                embedding.embed_chunks(batch, doc_id, user_id, project_id=row["project_id"])
+                embedding.embed_chunks(
+                    batch,
+                    doc_id,
+                    user_id,
+                    project_id=row["project_id"],
+                    title=extracted.title or row["filename"],
+                )
                 job_manager.set_progress(doc_id, len(chunks), start + len(batch))
 
             conn.execute(

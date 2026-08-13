@@ -20,6 +20,18 @@ class ChatService:
         self.search_service = SearchService(db)
 
     async def stream_chat(self, req, user_id: str):
+        try:
+            return await self._stream_chat(req, user_id)
+        except Exception as exc:
+            logger.exception("chat failed before streaming started")
+            detail = getattr(exc, "detail", None) or str(exc)
+
+            async def _error_stream():
+                yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
+
+            return StreamingResponse(_error_stream(), media_type="text/event-stream")
+
+    async def _stream_chat(self, req, user_id: str):
         session_id = req.session_id or generate_id()
 
         # A chat always belongs to a project. Existing sessions keep theirs;
@@ -71,13 +83,16 @@ class ChatService:
                 return
 
             # Persist the assistant reply so reloading the session restores it
-            self.repo.add_message(
-                session_id,
-                "assistant",
-                "".join(answer),
-                sources=json.dumps(source_data),
-                model_used=model.get("id"),
-            )
+            try:
+                self.repo.add_message(
+                    session_id,
+                    "assistant",
+                    "".join(answer),
+                    sources=json.dumps(source_data),
+                    model_used=model.get("id"),
+                )
+            except Exception:
+                logger.exception("could not persist assistant message for %s", session_id)
 
             yield f"data: {json.dumps({'type': 'sources', 'sources': source_data})}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"

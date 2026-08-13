@@ -27,6 +27,7 @@ devices. Users with more powerful machines can optionally enable **Ollama** or e
 ```bash
 cd backend
 uv venv
+.venv\Scripts\activate.bat
 uv pip install -r requirements.txt
 cp .env.example .env
 uv run uvicorn app.main:app --reload

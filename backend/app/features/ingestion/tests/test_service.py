@@ -168,7 +168,7 @@ class _FakeEmbeddingService:
     def __init__(self, settings_dict=None):
         pass
 
-    def embed_chunks(self, chunks, document_id, user_id, project_id=None):
+    def embed_chunks(self, chunks, document_id, user_id, project_id=None, title=""):
         pass
 
 

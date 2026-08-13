@@ -66,10 +66,15 @@ export function createSSEConnection(
     signal: controller.signal,
   })
     .then(async (response) => {
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ detail: `Request failed: ${response.status}` }));
+        throw new Error(err.detail || `Request failed: ${response.status}`);
+      }
       if (!response.body) throw new Error('No response body');
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let finished = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -86,10 +91,18 @@ export function createSSEConnection(
             else if (data.type === 'sources') {
               // reserved for future source rendering
             } else if (data.type === 'error') {
+              finished = true;
               onError(new Error(data.detail || 'Generation failed'));
-            } else if (data.type === 'done') onDone(data.session_id);
+            } else if (data.type === 'done') {
+              finished = true;
+              onDone(data.session_id);
+            }
           }
         }
+      }
+
+      if (!finished) {
+        onError(new Error('Connection closed before the response completed'));
       }
     })
     .catch((err) => {

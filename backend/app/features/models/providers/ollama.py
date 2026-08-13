@@ -8,7 +8,8 @@ from app.features.models.providers.base import BaseLLMProvider
 
 class OllamaProvider(BaseLLMProvider):
     async def stream_chat(self, prompt: str, messages: List[dict]) -> AsyncGenerator[str, None]:
-        async with httpx.AsyncClient(base_url=settings.OLLAMA_BASE_URL) as client:
+        timeout = httpx.Timeout(connect=10.0, read=600.0, write=30.0, pool=10.0)
+        async with httpx.AsyncClient(base_url=settings.OLLAMA_BASE_URL, timeout=timeout) as client:
             ollama_messages = [{"role": "system", "content": prompt}]
             for m in messages:
                 ollama_messages.append({"role": m["role"], "content": m["content"]})

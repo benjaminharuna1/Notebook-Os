@@ -29,11 +29,12 @@ class SearchService:
         chroma = get_chroma_client()
         collection = chroma.get_or_create_collection(name=collection_name)
 
-        where = {"user_id": user_id}
+        conditions = [{"user_id": user_id}]
         if req.project_id:
-            where["project_id"] = req.project_id
+            conditions.append({"project_id": req.project_id})
         if req.document_ids:
-            where["document_id"] = {"$in": req.document_ids}
+            conditions.append({"document_id": {"$in": req.document_ids}})
+        where = conditions[0] if len(conditions) == 1 else {"$and": conditions}
 
         return collection.query(
             query_embeddings=[query_embedding],

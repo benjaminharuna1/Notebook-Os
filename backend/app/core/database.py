@@ -1,10 +1,14 @@
 import sqlite3
+import threading
 from pathlib import Path
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from app.core.config import settings
+
+_chroma_lock = threading.Lock()
+_chroma_client = None
 
 
 def get_sqlite_connection() -> sqlite3.Connection:
@@ -62,8 +66,6 @@ def init_sqlite_db():
             error       TEXT
         );
 
-        CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id);
-
         CREATE TABLE IF NOT EXISTS chunks (
             id          TEXT PRIMARY KEY,
             document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
@@ -86,8 +88,6 @@ def init_sqlite_db():
             created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
         );
-
-        CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id);
 
         CREATE TABLE IF NOT EXISTS chat_messages (
             id          TEXT PRIMARY KEY,
@@ -132,14 +132,33 @@ def init_sqlite_db():
         except sqlite3.OperationalError:
             pass
 
+    # Indexes referencing migrated columns must be created after the ALTERs.
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id)",
+    ):
+        try:
+            cursor.execute(statement)
+        except sqlite3.OperationalError:
+            pass
+
     conn.commit()
     conn.close()
 
 
 def get_chroma_client() -> chromadb.ClientAPI:
-    chroma_path = Path(settings.CHROMA_DB_PATH)
-    chroma_path.mkdir(parents=True, exist_ok=True)
-    return chromadb.PersistentClient(
-        path=str(chroma_path),
-        settings=ChromaSettings(anonymized_telemetry=False),
-    )
+    # Cache a single long-lived client. Creating a fresh PersistentClient per
+    # call lets the old one get garbage-collected, which drops Chroma's
+    # refcount to zero and tears down the shared system while worker threads
+    # are still using it (KeyError: '<chroma_db path>').
+    global _chroma_client
+    if _chroma_client is None:
+        with _chroma_lock:
+            if _chroma_client is None:
+                chroma_path = Path(settings.CHROMA_DB_PATH)
+                chroma_path.mkdir(parents=True, exist_ok=True)
+                _chroma_client = chromadb.PersistentClient(
+                    path=str(chroma_path),
+                    settings=ChromaSettings(anonymized_telemetry=False),
+                )
+    return _chroma_client

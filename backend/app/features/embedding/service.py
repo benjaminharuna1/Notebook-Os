@@ -18,6 +18,7 @@ class EmbeddingService:
         document_id: str,
         user_id: str,
         project_id: str | None = None,
+        title: str = "",
     ):
         texts = [c["content"] for c in chunks]
         embeddings = self.provider.embed(texts)
@@ -32,8 +33,9 @@ class EmbeddingService:
             {
                 "user_id": user_id,
                 "document_id": document_id,
-                "chunk_index": c["chunk_index"],
-                "page_number": c.get("page_number", 0),
+                "source_title": title,
+                "chunk_index": int(c.get("chunk_index", 0)),
+                "page_number": int(c.get("page_number") or 0),
             }
             for c in chunks
         ]
