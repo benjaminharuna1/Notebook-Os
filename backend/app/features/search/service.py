@@ -1,16 +1,29 @@
 from app.core.database import get_chroma_client
-from app.features.embedding.providers.ollama import OllamaEmbeddingProvider
+from app.features.embedding.providers.factory import (
+    resolve_collection_name,
+    resolve_embedding_provider,
+)
 from app.features.search.schemas import SearchRequest, SearchResponse, SearchResult
+from app.features.settings.service import SettingsService
 
 
 class SearchService:
-    def __init__(self):
-        self.embedder = OllamaEmbeddingProvider()
-        self.chroma = get_chroma_client()
+    def __init__(self, db):
+        self.db = db
+        self.settings_service = SettingsService(db)
+
+    def _resolve(self, user_id: str):
+        user_settings = self.settings_service.get_settings(user_id).settings
+        embedder = resolve_embedding_provider(user_settings)
+        collection_name = resolve_collection_name(user_settings)
+        return embedder, collection_name
 
     async def search(self, req: SearchRequest, user_id: str) -> SearchResponse:
-        query_embedding = self.embedder.embed([req.query])[0]
-        collection = self.chroma.get_or_create_collection(name="documents")
+        embedder, collection_name = self._resolve(user_id)
+        query_embedding = embedder.embed([req.query])[0]
+
+        chroma = get_chroma_client()
+        collection = chroma.get_or_create_collection(name=collection_name)
 
         where = {"user_id": user_id}
         if req.document_ids:

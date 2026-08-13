@@ -9,8 +9,9 @@ from app.shared.id_utils import generate_id
 
 
 class IngestionService:
-    def __init__(self, db):
+    def __init__(self, db, settings_dict: dict | None = None):
         self.db = db
+        self.settings_dict = settings_dict or {}
         self.extractors = {"pdf": PDFExtractor()}
 
     async def ingest(self, file, user_id: str) -> IngestionResponse:
@@ -37,10 +38,10 @@ class IngestionService:
         )
         self.db.commit()
 
-        processing = ProcessingService()
+        processing = ProcessingService(self.settings_dict)
         chunks = processing.process(extracted.text, doc_id)
 
-        embedding = EmbeddingService()
+        embedding = EmbeddingService(self.settings_dict)
         await embedding.embed_chunks(chunks, doc_id, user_id)
 
         cursor.execute("UPDATE documents SET status = 'indexed', indexed_at = datetime('now') WHERE id = ?", (doc_id,))

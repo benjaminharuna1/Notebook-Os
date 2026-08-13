@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, Query
 
-from app.core.dependencies import require_auth
+from app.core.dependencies import get_current_user
 from app.features.graph.service import GraphService
 
-router = APIRouter(tags=["graph"], dependencies=[Depends(require_auth)])
+router = APIRouter(tags=["graph"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/graph")

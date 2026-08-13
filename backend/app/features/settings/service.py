@@ -2,6 +2,7 @@ import json
 
 from fastapi import HTTPException, status
 
+from app.features.settings.defaults import DEVICE_TIERS
 from app.features.settings.schemas import SettingsResponse, SettingsUpdate
 
 
@@ -34,6 +35,19 @@ class SettingsService:
 
         updates = req.model_dump(exclude_unset=True)
         current.update(updates)
+
+        # Choosing a device tier also applies that tier's local model defaults
+        tier = current.get("device_tier")
+        if tier in DEVICE_TIERS:
+            t = DEVICE_TIERS[tier]
+            current["default_llm"] = t["default_llm"]
+            current["ollama_model"] = t["ollama_model"]
+            current["chunk_size"] = t["chunk_size"]
+            current["chunk_overlap"] = t["chunk_overlap"]
+            current["max_tokens"] = t["max_tokens"]
+            if tier != "high":
+                current["embedding_provider"] = "fastembed"
+                current["embedding_model"] = t["embedding_model"]
 
         cursor.execute(
             "UPDATE user_settings SET settings = ? WHERE user_id = ?",

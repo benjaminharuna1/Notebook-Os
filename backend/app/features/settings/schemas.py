@@ -1,5 +1,6 @@
-from pydantic import BaseModel
 from typing import Optional
+
+from pydantic import BaseModel
 
 
 class SettingsResponse(BaseModel):
@@ -11,7 +12,13 @@ class SettingsUpdate(BaseModel):
     chunk_overlap: Optional[int] = None
     default_llm: Optional[str] = None
     default_embedding_model: Optional[str] = None
+    embedding_backend: Optional[str] = None
     provider: Optional[str] = None
+    local_model: Optional[str] = None
+    device_tier: Optional[str] = None
+    embedding_provider: Optional[str] = None
+    embedding_model: Optional[str] = None
+    cloud_enabled: Optional[bool] = None
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
     google_api_key: Optional[str] = None

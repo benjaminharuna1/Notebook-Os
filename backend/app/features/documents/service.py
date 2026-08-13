@@ -19,9 +19,9 @@ class DocumentService:
 
         return {**dict(doc), "chunk_count": chunk_count}
 
-    def delete_document(self, document_id: str, user_id: str):
+    def delete_document(self, document_id: str, user_id: str, collection_name: str = "documents"):
         self.repo.delete(document_id, user_id)
         chroma = self.repo.get_chroma()
-        collection = chroma.get_or_create_collection(name="documents")
+        collection = chroma.get_or_create_collection(name=collection_name)
         collection.delete(where={"document_id": document_id, "user_id": user_id})
         return {"success": True}

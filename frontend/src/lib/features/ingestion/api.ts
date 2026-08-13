@@ -1,16 +1,23 @@
-import { api } from '$lib/core/api/client';
+import { get } from 'svelte/store';
+import { api, BASE_URL } from '$lib/core/api/client';
+import { token } from '$lib/features/auth/store';
 import type { IngestionResponse, IngestionStatus } from './types';
 
 export async function uploadFile(file: File): Promise<IngestionResponse> {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch('http://localhost:8000/api/v1/ingest/file', {
+  const authToken = get(token);
+  const response = await fetch(`${BASE_URL}/ingest/file`, {
     method: 'POST',
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
     body: formData,
   });
 
-  if (!response.ok) throw new Error('Upload failed');
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ detail: 'Upload failed' }));
+    throw new Error(err.detail || 'Upload failed');
+  }
   return response.json();
 }
 

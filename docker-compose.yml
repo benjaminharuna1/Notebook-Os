@@ -7,14 +7,21 @@ services:
       - "8000:8000"
     volumes:
       - ./backend/data:/app/data
+      - ./backend/models:/app/models
     environment:
       - AUTH_PASSWORD=changeme
-    depends_on:
-      ollama:
-        condition: service_healthy
+      - EMBEDDING_BACKEND=local
+      - LOCAL_MODELS_DIR=/app/models
+    # Ollama is optional — the backend runs fully local via llama-cpp.
+    # Uncomment depends_on if you want the backend to wait for Ollama.
+    # depends_on:
+    #   ollama:
+    #     condition: service_healthy
 
+  # Optional: enable for GPU users who prefer Ollama-managed models.
   ollama:
     image: ollama/ollama:latest
+    profiles: ["gpu"]
     ports:
       - "11434:11434"
     volumes:

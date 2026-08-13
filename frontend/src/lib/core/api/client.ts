@@ -1,7 +1,8 @@
 import { get } from 'svelte/store';
 import { token } from '$lib/features/auth/store';
 
-const BASE_URL = 'http://localhost:8000/api/v1';
+export const BASE_URL: string =
+  (import.meta.env?.VITE_API_URL as string | undefined) || 'http://localhost:8000/api/v1';
 
 interface FetchOptions {
   method?: string;

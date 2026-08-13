@@ -13,6 +13,32 @@ class Settings(BaseSettings):
 
     OLLAMA_BASE_URL: str = "http://localhost:11434"
 
+    # Local-first inference (llama-cpp-python)
+    LOCAL_MODELS_DIR: str = "./models"
+    # Which embedding backend to use by default: "local" (llama-cpp, no Ollama) or "ollama"
+    EMBEDDING_BACKEND: str = "fastembed"
+    # Default local GGUF models (filenames inside LOCAL_MODELS_DIR)
+    LOCAL_LLM_MODEL: str = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+    LOCAL_EMBEDDING_MODEL: str = "nomic-embed-text-v1.5.Q4_K_M.gguf"
+    # llama-cpp tuning
+    LLAMA_THREADS: int = 4
+    LLAMA_CONTEXT_SIZE: int = 4096
+    LLAMA_MAX_TOKENS: int = 512
+
+    # Defaults (used as fallback when a user has no settings row yet)
+    CHUNK_SIZE: int = 1024
+    CHUNK_OVERLAP: int = 128
+    DEFAULT_LLM: str = "llama3.2:3b"
+    DEFAULT_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    DEFAULT_EMBEDDING_PROVIDER: str = "fastembed"
+    DEFAULT_PROVIDER: str = "ollama"
+    DEFAULT_TEMPERATURE: float = 0.7
+    DEFAULT_MAX_TOKENS: int = 2048
+
+    # Cloud model support. Users opt in per-account in Settings; set this to
+    # false to hard-disable cloud models server-wide.
+    CLOUD_ENABLED: bool = True
+
     JWT_SECRET_KEY: str = "change-me-to-a-random-secret"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 15

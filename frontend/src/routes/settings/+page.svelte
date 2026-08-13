@@ -1,19 +1,37 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getSettings, updateSettings } from '$lib/features/settings/api';
-  import type { UserSettings } from '$lib/features/settings/types';
+  import { getSettings, updateSettings, getLocalStatus, getCatalog } from '$lib/features/settings/api';
+  import type { LocalStatus, ModelCatalog, UserSettings } from '$lib/features/settings/types';
   import Header from '$lib/core/components/layout/Header.svelte';
   import { toasts } from '$lib/core/stores/toasts';
 
   let settings = $state<UserSettings>({} as UserSettings);
+  let localStatus = $state<LocalStatus | null>(null);
+  let catalog = $state<ModelCatalog | null>(null);
   let loading = $state(true);
   let saving = $state(false);
 
   onMount(async () => {
     const res = await getSettings();
     settings = res.settings;
+    localStatus = await getLocalStatus().catch(() => null);
+    catalog = await getCatalog().catch(() => null);
     loading = false;
   });
+
+  function applyTier(tier: 'low' | 'medium' | 'high') {
+    settings.device_tier = tier;
+    const rec = catalog?.embeddings?.[0];
+    const llm = catalog?.llm?.[0];
+    if (llm) {
+      settings.default_llm = llm;
+      settings.ollama_model = llm;
+    }
+    if (rec) {
+      settings.embedding_provider = rec.provider as 'fastembed' | 'ollama';
+      settings.embedding_model = rec.model;
+    }
+  }
 
   async function save() {
     saving = true;
@@ -32,12 +50,54 @@
 <div class="flex h-full flex-col">
   <Header />
   <div class="flex-1 overflow-auto p-6">
-    <h1 class="mb-6 text-2xl font-bold text-slate-900">Settings</h1>
+    <div class="mb-6 flex items-center justify-between">
+      <h1 class="text-2xl font-bold text-slate-900">Settings</h1>
+      {#if localStatus && !localStatus.ollama_running}
+        <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">
+          Ollama not running — using local fastembed embeddings
+        </span>
+      {/if}
+    </div>
 
     {#if loading}
       <p class="text-slate-400">Loading...</p>
     {:else}
       <form onsubmit={(e) => { e.preventDefault(); save(); }} class="max-w-2xl space-y-8">
+        <section>
+          <h2 class="mb-4 text-lg font-semibold text-slate-800">Device &amp; Local Models</h2>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="mb-1 block text-sm font-medium text-slate-700">Device Tier</label>
+              <select bind:value={settings.device_tier} onchange={(e) => applyTier(e.currentTarget.value as 'low' | 'medium' | 'high')} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm">
+                <option value="low">Low-end</option>
+                <option value="medium">Medium</option>
+                <option value="high">High-end</option>
+              </select>
+              <p class="mt-1 text-xs text-slate-400">
+                {#if localStatus}Recommended local model for this tier: {localStatus.recommended_local_model}{/if}
+              </p>
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium text-slate-700">Default Local LLM</label>
+              <input type="text" bind:value={settings.default_llm} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" />
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium text-slate-700">Embedding Provider</label>
+              <select bind:value={settings.embedding_provider} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm">
+                <option value="fastembed">fastembed (ONNX — no Ollama needed)</option>
+                <option value="ollama">Ollama (nomic-embed-text)</option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium text-slate-700">Embedding Model</label>
+              <input type="text" bind:value={settings.embedding_model} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" />
+            </div>
+          </div>
+          {#if localStatus && localStatus.ollama_models.length > 0}
+            <p class="mt-2 text-xs text-slate-400">Installed Ollama models: {localStatus.ollama_models.join(', ')}</p>
+          {/if}
+        </section>
+
         <section>
           <h2 class="mb-4 text-lg font-semibold text-slate-800">Chunking</h2>
           <div class="grid grid-cols-2 gap-4">
@@ -52,49 +112,49 @@
           </div>
         </section>
 
-        <section>
-          <h2 class="mb-4 text-lg font-semibold text-slate-800">Default Models</h2>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="mb-1 block text-sm font-medium text-slate-700">Provider</label>
-              <select bind:value={settings.provider} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm">
-                <option value="ollama">Ollama</option>
-                <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="google">Google</option>
-              </select>
-            </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium text-slate-700">Default LLM</label>
-              <input type="text" bind:value={settings.default_llm} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" />
-            </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium text-slate-700">Embedding Model</label>
-              <input type="text" bind:value={settings.default_embedding_model} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" />
-            </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium text-slate-700">Ollama Model</label>
-              <input type="text" bind:value={settings.ollama_model} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" />
-            </div>
+        <section class="rounded-lg border border-slate-200 p-4">
+          <div class="mb-2 flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-slate-800">Cloud Models (Optional)</h2>
+            <label class="flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" bind:checked={settings.cloud_enabled} class="h-4 w-4 rounded border-slate-300" />
+              Enable cloud models
+            </label>
           </div>
-        </section>
+          <p class="mb-4 text-xs text-slate-400">
+            The app runs fully local by default. Enable only if you want to use API models (good for low-end devices) or
+            higher-quality responses.
+          </p>
 
-        <section>
-          <h2 class="mb-4 text-lg font-semibold text-slate-800">API Keys</h2>
-          <div class="space-y-4">
-            <div>
-              <label class="mb-1 block text-sm font-medium text-slate-700">OpenAI API Key</label>
-              <input type="password" bind:value={settings.openai_api_key} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" placeholder="sk-..." />
+          {#if settings.cloud_enabled}
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="mb-1 block text-sm font-medium text-slate-700">OpenAI Model</label>
+                <input type="text" bind:value={settings.openai_model} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" placeholder="gpt-4o-mini" />
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-medium text-slate-700">OpenAI API Key</label>
+                <input type="password" bind:value={settings.openai_api_key} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" placeholder="sk-..." />
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-medium text-slate-700">Anthropic Model</label>
+                <input type="text" bind:value={settings.anthropic_model} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" placeholder="claude-3-5-haiku-latest" />
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-medium text-slate-700">Anthropic API Key</label>
+                <input type="password" bind:value={settings.anthropic_api_key} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" placeholder="sk-ant-..." />
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-medium text-slate-700">Google Model</label>
+                <input type="text" bind:value={settings.google_model} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" placeholder="gemini-2.0-flash" />
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-medium text-slate-700">Google API Key</label>
+                <input type="password" bind:value={settings.google_api_key} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" placeholder="AIza..." />
+              </div>
             </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium text-slate-700">Anthropic API Key</label>
-              <input type="password" bind:value={settings.anthropic_api_key} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" placeholder="sk-ant-..." />
-            </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium text-slate-700">Google API Key</label>
-              <input type="password" bind:value={settings.google_api_key} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" placeholder="AIza..." />
-            </div>
-          </div>
+          {:else}
+            <p class="text-sm text-slate-400">Cloud models disabled — everything runs on your device.</p>
+          {/if}
         </section>
 
         <section>

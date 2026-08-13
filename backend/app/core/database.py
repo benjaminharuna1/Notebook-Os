@@ -10,7 +10,7 @@ from app.core.config import settings
 def get_sqlite_connection() -> sqlite3.Connection:
     db_path = Path(settings.DATABASE_URL.replace("sqlite+aiosqlite:///", ""))
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")

@@ -7,17 +7,16 @@ from app.features.embedding.providers.base import BaseEmbeddingProvider
 
 
 class OllamaEmbeddingProvider(BaseEmbeddingProvider):
-    def __init__(self):
+    def __init__(self, model: str = "nomic-embed-text"):
         self.base_url = settings.OLLAMA_BASE_URL
-        self.model = settings.DEFAULT_EMBEDDING_MODEL
+        self.model = model
 
     def embed(self, texts: List[str]) -> List[List[float]]:
-        embeddings = []
-        for text in texts:
-            response = requests.post(
-                f"{self.base_url}/api/embeddings",
-                json={"model": self.model, "prompt": text},
-            )
-            response.raise_for_status()
-            embeddings.append(response.json()["embedding"])
-        return embeddings
+        # Batch all texts in a single request instead of N round-trips
+        response = requests.post(
+            f"{self.base_url}/api/embed",
+            json={"model": self.model, "input": texts},
+            timeout=120,
+        )
+        response.raise_for_status()
+        return response.json()["embeddings"]

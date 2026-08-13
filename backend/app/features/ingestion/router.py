@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, UploadFile, File
 from app.core.dependencies import get_current_user, get_db
 from app.features.ingestion.schemas import IngestionResponse, IngestionStatus
 from app.features.ingestion.service import IngestionService
+from app.features.settings.service import SettingsService
 
 router = APIRouter(tags=["ingestion"])
 
@@ -13,7 +14,9 @@ async def ingest_file(
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    service = IngestionService(db)
+    settings_service = SettingsService(db)
+    user_settings = settings_service.get_settings(current_user["id"]).settings
+    service = IngestionService(db, settings_dict=user_settings)
     return await service.ingest(file, current_user["id"])
 
 

@@ -6,4 +6,5 @@ export interface ModelConfig {
   is_active: boolean;
   is_default: boolean;
   config?: string;
+  source?: 'local' | 'cloud';
 }

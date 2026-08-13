@@ -7,11 +7,12 @@ from app.shared.id_utils import generate_id
 
 
 class ProcessingService:
-    def __init__(self):
+    def __init__(self, settings_dict: dict | None = None):
+        settings_dict = settings_dict or {}
         self.cleaner = TextCleaner()
         self.chunker = RecursiveCharacterChunker(
-            chunk_size=settings.CHUNK_SIZE,
-            chunk_overlap=settings.CHUNK_OVERLAP,
+            chunk_size=settings_dict.get("chunk_size") or settings.CHUNK_SIZE,
+            chunk_overlap=settings_dict.get("chunk_overlap") or settings.CHUNK_OVERLAP,
         )
 
     def process(self, text: str, document_id: str) -> List[dict]:

@@ -4,24 +4,8 @@ from fastapi import HTTPException, Response, status
 
 from app.core.security import create_jwt, hash_password, verify_password
 from app.features.auth.schemas import AuthResponse, LoginRequest, RegisterRequest
+from app.features.settings.defaults import get_default_settings
 from app.shared.id_utils import generate_id
-
-DEFAULT_SETTINGS = {
-    "chunk_size": 1024,
-    "chunk_overlap": 128,
-    "default_llm": "llama3.2:3b",
-    "default_embedding_model": "nomic-embed-text",
-    "provider": "ollama",
-    "openai_api_key": "",
-    "anthropic_api_key": "",
-    "google_api_key": "",
-    "openai_model": "gpt-4o",
-    "anthropic_model": "claude-sonnet-4-20250514",
-    "google_model": "gemini-2.0-flash",
-    "ollama_model": "llama3.2:3b",
-    "max_tokens": 2048,
-    "temperature": 0.7,
-}
 
 
 class AuthService:
@@ -49,7 +33,7 @@ class AuthService:
 
         cursor.execute(
             "INSERT INTO user_settings (user_id, settings) VALUES (?, ?)",
-            (user_id, json.dumps(DEFAULT_SETTINGS)),
+            (user_id, json.dumps(get_default_settings("medium"))),
         )
 
         self.db.commit()

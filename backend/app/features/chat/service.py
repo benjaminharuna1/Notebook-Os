@@ -10,11 +10,13 @@ from app.shared.id_utils import generate_id
 
 
 class ChatService:
-    def __init__(self, db):
+    def __init__(self, db, settings_dict: dict | None = None):
+        self.db = db
         self.repo = ChatRepository(db)
+        self.settings_dict = settings_dict or {}
         self.prompt_builder = PromptBuilder()
-        self.model_service = ModelService(db)
-        self.search_service = SearchService()
+        self.model_service = ModelService(db, self.settings_dict)
+        self.search_service = SearchService(db)
 
     async def stream_chat(self, req, user_id: str):
         session_id = req.session_id or generate_id()
@@ -32,7 +34,7 @@ class ChatService:
         messages = self.repo.get_messages(session_id)
 
         async def generate():
-            provider = self.model_service.get_provider(model)
+            provider = self.model_service.get_provider(model, user_id)
             async for chunk in provider.stream_chat(context, messages):
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
 

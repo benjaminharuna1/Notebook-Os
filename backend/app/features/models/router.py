@@ -30,3 +30,21 @@ async def switch_model(
 async def list_ollama_models():
     service = ModelService(None)
     return service.list_ollama_available()
+
+
+@router.get("/models/catalog")
+async def get_catalog(
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    service = ModelService(db)
+    return service.get_catalog(current_user["id"])
+
+
+@router.get("/local/status")
+async def local_status(
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    service = ModelService(db)
+    return service.get_local_status(current_user["id"])
