@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, File, UploadFile
 
 from app.core.dependencies import get_current_user, get_db
 from app.features.ingestion.schemas import IngestionResponse, IngestionStatus
@@ -28,3 +28,35 @@ async def get_ingestion_status(
 ):
     service = IngestionService(db)
     return await service.get_status(document_id, current_user["id"])
+
+
+@router.post("/ingest/{document_id}/pause")
+async def pause_ingestion(
+    document_id: str,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    service = IngestionService(db)
+    return service.pause(document_id, current_user["id"])
+
+
+@router.post("/ingest/{document_id}/resume")
+async def resume_ingestion(
+    document_id: str,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    service = IngestionService(db)
+    return service.resume(document_id, current_user["id"])
+
+
+@router.post("/ingest/{document_id}/reprocess")
+async def reprocess_document(
+    document_id: str,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    settings_service = SettingsService(db)
+    user_settings = settings_service.get_settings(current_user["id"]).settings
+    service = IngestionService(db, settings_dict=user_settings)
+    return service.reprocess(document_id, current_user["id"])

@@ -6,6 +6,7 @@ from app.features.chat.repository import ChatRepository
 from app.features.chat.prompt_builder import PromptBuilder
 from app.features.models.service import ModelService
 from app.features.search.service import SearchService
+from app.features.skills.service import SkillsService
 from app.shared.id_utils import generate_id
 
 
@@ -29,7 +30,8 @@ class ChatService:
         sources = search_results.results
 
         model = self.model_service.get_active_model(user_id)
-        context = self.prompt_builder.build(sources, req.message)
+        skill_instructions = SkillsService(self.db).active_instructions(user_id)
+        context = self.prompt_builder.build(sources, req.message, skill_instructions)
 
         messages = self.repo.get_messages(session_id)
         source_data = [

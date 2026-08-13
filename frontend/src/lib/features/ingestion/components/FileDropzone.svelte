@@ -10,18 +10,18 @@
     for (const file of files) {
       const id = uploadQueue.add(file);
       if (!file.name.toLowerCase().endsWith('.pdf')) {
-        uploadQueue.markError(id, 'Only .pdf files are supported');
+        uploadQueue.patch(id, { status: 'error', error: 'Only .pdf files are supported' });
         continue;
       }
       if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-        uploadQueue.markError(id, `Max file size is ${MAX_SIZE_MB} MB`);
+        uploadQueue.patch(id, { status: 'error', error: `Max file size is ${MAX_SIZE_MB} MB` });
         continue;
       }
       try {
-        await uploadFile(file);
-        uploadQueue.markDone(id);
+        const res = await uploadFile(file);
+        uploadQueue.patch(id, { documentId: res.document_id, status: 'processing' });
       } catch (err) {
-        uploadQueue.markError(id, (err as Error).message);
+        uploadQueue.patch(id, { status: 'error', error: (err as Error).message });
       }
     }
   }

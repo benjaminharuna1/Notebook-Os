@@ -48,7 +48,8 @@ def init_sqlite_db():
             author      TEXT,
             created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
             indexed_at  DATETIME,
-            status      TEXT DEFAULT 'pending'
+            status      TEXT DEFAULT 'pending',
+            error       TEXT
         );
 
         CREATE TABLE IF NOT EXISTS chunks (
@@ -93,7 +94,22 @@ def init_sqlite_db():
             is_default  BOOLEAN DEFAULT FALSE,
             config      TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS user_skills (
+            user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            skill_id     TEXT NOT NULL,
+            manifest     TEXT NOT NULL,
+            enabled      INTEGER DEFAULT 1,
+            installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, skill_id)
+        );
     """)
+
+    # Lightweight migration for databases created before the `error` column.
+    try:
+        cursor.execute("ALTER TABLE documents ADD COLUMN error TEXT")
+    except sqlite3.OperationalError:
+        pass
 
     conn.commit()
     conn.close()

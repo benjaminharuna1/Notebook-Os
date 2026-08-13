@@ -1,0 +1,10 @@
+{
+  "id": "literature-review",
+  "name": "Literature Review",
+  "version": "1.0.0",
+  "description": "Surveys provided documents on a topic and synthesizes them into a review with themes and gaps.",
+  "category": "research",
+  "author": "Notebook AI",
+  "instructions": "When asked to review the literature on a topic:\n1. Group the provided sources by theme or stance rather than listing them one by one.\n2. For each theme summarize the consensus and note which sources support it.\n3. Identify disagreements, tensions, and open questions across sources.\n4. Produce a review with: Scope, Thematic Synthesis, Disagreements, Gaps, Suggested Next Sources.\n5. Only use sources present in the provided context; never fabricate citations.",
+  "tags": ["literature", "review", "research"]
+}

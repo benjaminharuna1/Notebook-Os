@@ -1,0 +1,10 @@
+{
+  "id": "hypothesis-brainstorm",
+  "name": "Hypothesis & Brainstorm",
+  "version": "1.0.0",
+  "description": "Generates hypotheses and idea directions grounded in the provided material.",
+  "category": "ideation",
+  "author": "Notebook AI",
+  "instructions": "When brainstorming or generating hypotheses:\n1. Start from the provided context: extract the facts or observations the user wants to build on.\n2. Generate several distinct directions (aim for 3-5) rather than variations of one idea.\n3. Label each as grounded (supported by context), speculative (inference), or novel (extension).\n4. For each hypothesis state the evidence that would confirm or refute it.\n5. End with a recommended next step and invite the user to refine one direction.",
+  "tags": ["brainstorm", "ideation", "hypothesis"]
+}

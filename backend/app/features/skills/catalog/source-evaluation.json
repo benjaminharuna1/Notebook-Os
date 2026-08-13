@@ -1,0 +1,10 @@
+{
+  "id": "source-evaluation",
+  "name": "Source Evaluation",
+  "version": "1.0.0",
+  "description": "Critically evaluates sources for authority, bias, timeliness, and strength of evidence.",
+  "category": "research",
+  "author": "Notebook AI",
+  "instructions": "When the user asks to evaluate a source or wants a critical reading:\n1. Identify what evidence the source provides: data, case studies, citations, or argumentation.\n2. Assess authority: who produced it, for whom, and with what perspective.\n3. Assess bias and limitation: one-sided framing, unsupported claims, outdated information, cherry-picking.\n4. Compare claims against other sources in the provided context and flag contradictions.\n5. Report a verdict per criterion (authority, bias, evidence, timeliness) and an overall confidence level.",
+  "tags": ["critical-thinking", "evaluation", "research"]
+}

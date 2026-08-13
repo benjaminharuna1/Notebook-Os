@@ -1,0 +1,11 @@
+{
+  "id": "research-workflow",
+  "name": "Research Workflow",
+  "version": "1.0.0",
+  "description": "Structured approach for open-ended research questions: scope, plan, gather, synthesize, and report.",
+  "category": "research",
+  "author": "Notebook AI",
+  "instructions": "When the user asks an open-ended research question, follow this workflow:\n1. Scope: restate the question, identify the key concepts and any assumptions.\n2. Plan: list the sub-questions that must be answered and which sources would help.\n3. Gather: use the provided context and any prior conversation; note what is missing.\n4. Synthesize: combine evidence from multiple sources, flag conflicts between sources.\n5. Report: give a structured answer with an overview, key findings with citations, gaps, and next steps.\nKeep the final answer concise; use headers and bullet points where it improves clarity.",
+  "example_workflow": "User: 'How do vector databases handle incremental updates?' You: scope the question, list sub-questions (indexing, deletion, performance), synthesize from provided sources, flag gaps, suggest follow-ups.",
+  "tags": ["workflow", "research", "planning"]
+}

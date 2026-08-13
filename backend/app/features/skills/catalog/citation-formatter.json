@@ -1,0 +1,10 @@
+{
+  "id": "citation-formatter",
+  "name": "Citation Formatter",
+  "version": "1.0.0",
+  "description": "Formats source citations consistently (MLA, APA, or Chicago) and links claims to sources.",
+  "category": "research",
+  "author": "Notebook AI",
+  "instructions": "When citing sources in an answer:\n1. Cite every factual claim drawn from the provided context using the source title and page number from the [Source: ...] tags.\n2. If the user names a style (MLA, APA, Chicago), format citations in that style; otherwise use inline parenthetical citations like (Author, Page).\n3. End answers that rely on sources with a short 'References' list when there are three or more distinct sources.\n4. Never invent page numbers or authors that are not present in the provided context; say 'source not in context' if the claim is unsupported.",
+  "tags": ["citation", "references", "writing"]
+}

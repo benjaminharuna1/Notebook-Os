@@ -13,7 +13,8 @@ devices. Users with more powerful machines can optionally enable **Ollama** or e
 - RAG search across your PDF library (vector + knowledge graph)
 - Local or cloud models (Ollama, OpenAI, Anthropic, Google), switched per user
 - API keys are encrypted at rest; uploads are size-limited to `MAX_UPLOAD_SIZE_MB`
-- Auth endpoints are rate-limited per client IP
+- Uploads are processed in the background with live status, pause/resume and
+  one-click reprocessing; auth endpoints are rate-limited per client IP
 
 ## Quick Start
 

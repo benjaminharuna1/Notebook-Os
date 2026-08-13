@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
     from app.features.chat.router import router as chat_router
     from app.features.models.router import router as models_router
     from app.features.graph.router import router as graph_router
+    from app.features.skills.router import router as skills_router
 
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(settings_router, prefix="/api/v1")
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(models_router, prefix="/api/v1")
     app.include_router(graph_router, prefix="/api/v1")
+    app.include_router(skills_router, prefix="/api/v1")
 
     @app.get("/health")
     async def health():

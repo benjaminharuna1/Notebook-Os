@@ -24,3 +24,15 @@ export async function uploadFile(file: File): Promise<IngestionResponse> {
 export async function getIngestionStatus(documentId: string): Promise<IngestionStatus> {
   return api.get<IngestionStatus>(`/ingest/status/${documentId}`);
 }
+
+export async function pauseIngestion(documentId: string): Promise<{ status: string }> {
+  return api.post<{ status: string }>(`/ingest/${documentId}/pause`, {});
+}
+
+export async function resumeIngestion(documentId: string): Promise<{ status: string }> {
+  return api.post<{ status: string }>(`/ingest/${documentId}/resume`, {});
+}
+
+export async function reprocessIngestion(documentId: string): Promise<{ status: string }> {
+  return api.post<{ status: string }>(`/ingest/${documentId}/reprocess`, {});
+}

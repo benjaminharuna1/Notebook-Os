@@ -1,3 +1,5 @@
+export type IngestionStatusValue = 'queued' | 'processing' | 'paused' | 'indexed' | 'failed';
+
 export interface IngestionResponse {
   document_id: string;
   status: string;
@@ -6,7 +8,7 @@ export interface IngestionResponse {
 
 export interface IngestionStatus {
   document_id: string;
-  status: 'pending' | 'processing' | 'indexed' | 'failed';
+  status: IngestionStatusValue;
   progress: number;
   chunks_created: number;
   error?: string;

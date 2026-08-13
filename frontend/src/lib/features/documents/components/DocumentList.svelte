@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import StatusBadge from '$lib/core/components/StatusBadge.svelte';
   import { listDocuments, deleteDocument } from '../api';
+  import { pauseIngestion, resumeIngestion, reprocessIngestion } from '$lib/features/ingestion/api';
   import type { Document } from '../types';
 
   let docs: Document[] = $state([]);
@@ -8,12 +10,17 @@
   let page = $state(1);
   let loading = $state(true);
 
+  const ACTIVE = ['queued', 'processing', 'paused'];
+
   onMount(async () => {
     await loadDocs();
+    const timer = setInterval(() => {
+      if (docs.some((d) => ACTIVE.includes(d.status))) loadDocs();
+    }, 2500);
+    return () => clearInterval(timer);
   });
 
   async function loadDocs() {
-    loading = true;
     const result = await listDocuments({ page });
     docs = result.documents;
     total = result.total;
@@ -23,6 +30,21 @@
   async function handleDelete(id: string) {
     await deleteDocument(id);
     await loadDocs();
+  }
+
+  async function handlePause(doc: Document) {
+    await pauseIngestion(doc.id);
+    doc.status = 'paused';
+  }
+
+  async function handleResume(doc: Document) {
+    await resumeIngestion(doc.id);
+    doc.status = 'processing';
+  }
+
+  async function handleReprocess(doc: Document) {
+    await reprocessIngestion(doc.id);
+    doc.status = 'queued';
   }
 
   const fileTypeColors: Record<string, string> = {
@@ -45,18 +67,47 @@
         >
           {doc.file_type}
         </span>
-        <div class="flex-1">
+        <div class="min-w-0 flex-1">
           <a href="/library/{doc.id}" class="font-medium text-slate-900 hover:text-indigo-600">
             {doc.title}
           </a>
-          <p class="text-xs text-slate-400">{doc.filename}</p>
+          <p class="truncate text-xs text-slate-400">{doc.filename}</p>
         </div>
-        <button
-          onclick={() => handleDelete(doc.id)}
-          class="text-xs text-red-500 hover:text-red-700"
-        >
-          Delete
-        </button>
+        <StatusBadge status={doc.status} />
+        <div class="flex items-center gap-2">
+          {#if doc.status === 'queued' || doc.status === 'processing'}
+            <button
+              onclick={() => handlePause(doc)}
+              class="text-xs text-amber-600 hover:text-amber-700"
+              title="Pause"
+            >
+              ⏸ Pause
+            </button>
+          {:else if doc.status === 'paused'}
+            <button
+              onclick={() => handleResume(doc)}
+              class="text-xs text-indigo-600 hover:text-indigo-700"
+              title="Resume"
+            >
+              ▶ Continue
+            </button>
+          {:else}
+            <button
+              onclick={() => handleReprocess(doc)}
+              class="text-xs text-slate-500 hover:text-slate-700"
+              title="Reprocess"
+            >
+              ↻ Reprocess
+            </button>
+          {/if}
+          <button
+            onclick={() => handleDelete(doc.id)}
+            class="text-xs text-red-500 hover:text-red-700"
+            title="Delete"
+          >
+            Delete
+          </button>
+        </div>
       </div>
     {/each}
   {/if}

@@ -41,10 +41,17 @@ class Settings(BaseSettings):
 
     # Uploads
     MAX_UPLOAD_SIZE_MB: int = 25
+    # Chunks per embedding batch in the background ingestion pipeline
+    EMBED_BATCH_SIZE: int = 16
 
     # Rate limiting (per client IP)
     RATE_LIMIT_MAX_REQUESTS: int = 10
     RATE_LIMIT_WINDOW_SECONDS: int = 60
+
+    # Skill catalog directory. Leave empty to use the bundled catalog inside
+    # app/features/skills/catalog; point elsewhere (or at a registry mirror)
+    # to serve a different set of skills.
+    SKILLS_CATALOG_DIR: str = ""
 
     JWT_SECRET_KEY: str = "change-me-to-a-random-secret"
     JWT_ALGORITHM: str = "HS256"

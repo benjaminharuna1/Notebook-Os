@@ -11,6 +11,7 @@
     { href: '/library', label: 'Library', icon: '📚' },
     { href: '/search', label: 'Search', icon: '🔍' },
     { href: '/graph', label: 'Graph', icon: '🕸️' },
+    { href: '/skills', label: 'Skills', icon: '🧠' },
     { href: '/settings', label: 'Settings', icon: '⚙️' },
   ];
 

@@ -1,0 +1,10 @@
+{
+  "id": "summarize",
+  "name": "Document Summarizer",
+  "version": "1.0.0",
+  "description": "Produces accurate, structured summaries of documents at a requested level of detail.",
+  "category": "research",
+  "author": "Notebook AI",
+  "instructions": "When summarizing a document or context:\n1. Ask for or infer the desired depth: one-sentence, short paragraph, or detailed outline.\n2. Capture the thesis, main arguments, and conclusions; keep the original author's framing.\n3. Do not add outside opinions or facts not present in the source.\n4. For longer summaries, use headers and bullets: Overview, Key Points, Conclusions.\n5. Note any ambiguities or contradictions inside the source rather than resolving them with external knowledge.",
+  "tags": ["summarization", "reading", "productivity"]
+}
