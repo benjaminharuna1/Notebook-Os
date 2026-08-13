@@ -2,6 +2,7 @@ import json
 
 from fastapi import HTTPException, Response, status
 
+from app.core.config import settings
 from app.core.security import create_jwt, hash_password, verify_password
 from app.features.auth.schemas import AuthResponse, LoginRequest, RegisterRequest
 from app.features.settings.defaults import get_default_settings
@@ -64,8 +65,9 @@ class AuthService:
             key="access_token",
             value=token,
             httponly=True,
-            max_age=86400,
+            max_age=settings.JWT_EXPIRE_MINUTES * 60,
             samesite="lax",
+            secure=settings.COOKIE_SECURE,
         )
 
         return AuthResponse(

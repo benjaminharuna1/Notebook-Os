@@ -1,3 +1,4 @@
+from app.core.exceptions import AppException
 from app.features.documents.repository import DocumentRepository
 
 
@@ -11,7 +12,7 @@ class DocumentService:
     def get_document(self, document_id: str, user_id: str):
         doc = self.repo.get_by_id(document_id, user_id)
         if not doc:
-            raise ValueError("Document not found")
+            raise AppException("Document not found", status_code=404)
 
         cursor = self.repo.db.cursor()
         cursor.execute("SELECT COUNT(*) as count FROM chunks WHERE document_id = ?", (document_id,))

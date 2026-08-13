@@ -1,8 +1,5 @@
 # Backend
-backend/data/uploads/*
-backend/data/processed/*
-backend/data/chroma_db/*
-backend/data/notebook.db
+backend/data/
 backend/.env
 backend/__pycache__/
 backend/.venv/
@@ -11,6 +8,10 @@ backend/.venv/
 frontend/node_modules/
 frontend/.svelte-kit/
 frontend/build/
+
+# Tool artifacts
+.commandcode/
+package-lock.json
 
 # IDE
 .vscode/

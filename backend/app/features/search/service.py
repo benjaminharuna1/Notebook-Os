@@ -1,3 +1,5 @@
+import anyio
+
 from app.core.database import get_chroma_client
 from app.features.embedding.providers.factory import (
     resolve_collection_name,
@@ -18,7 +20,9 @@ class SearchService:
         collection_name = resolve_collection_name(user_settings)
         return embedder, collection_name
 
-    async def search(self, req: SearchRequest, user_id: str) -> SearchResponse:
+    def _search_sync(self, req: SearchRequest, user_id: str) -> dict:
+        """All blocking work (embedding + Chroma query) in one call so it can
+        run off the event loop."""
         embedder, collection_name = self._resolve(user_id)
         query_embedding = embedder.embed([req.query])[0]
 
@@ -29,12 +33,15 @@ class SearchService:
         if req.document_ids:
             where["document_id"] = {"$in": req.document_ids}
 
-        results = collection.query(
+        return collection.query(
             query_embeddings=[query_embedding],
             n_results=req.top_k,
             where=where,
             include=["metadatas", "documents", "distances"],
         )
+
+    async def search(self, req: SearchRequest, user_id: str) -> SearchResponse:
+        results = await anyio.to_thread.run_sync(self._search_sync, req, user_id)
 
         if not results["ids"] or not results["ids"][0]:
             return SearchResponse(results=[])

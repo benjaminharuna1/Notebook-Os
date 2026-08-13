@@ -39,9 +39,21 @@ class Settings(BaseSettings):
     # false to hard-disable cloud models server-wide.
     CLOUD_ENABLED: bool = True
 
+    # Uploads
+    MAX_UPLOAD_SIZE_MB: int = 25
+
+    # Rate limiting (per client IP)
+    RATE_LIMIT_MAX_REQUESTS: int = 10
+    RATE_LIMIT_WINDOW_SECONDS: int = 60
+
     JWT_SECRET_KEY: str = "change-me-to-a-random-secret"
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_MINUTES: int = 15
+    # Session lifetime in minutes. Kept at 1 day so it matches the auth cookie's
+    # 24h max-age; a shorter JWT than the cookie would force re-logins.
+    JWT_EXPIRE_MINUTES: int = 1440
+
+    # Mark the session cookie Secure when serving over HTTPS.
+    COOKIE_SECURE: bool = False
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

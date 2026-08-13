@@ -50,7 +50,7 @@ export function createSSEConnection(
   endpoint: string,
   body: unknown,
   onChunk: (data: string) => void,
-  onDone: () => void,
+  onDone: (sessionId: string) => void,
   onError: (error: Error) => void,
 ): () => void {
   const controller = new AbortController();
@@ -83,7 +83,11 @@ export function createSSEConnection(
           if (line.startsWith('data: ')) {
             const data = JSON.parse(line.slice(6));
             if (data.type === 'chunk') onChunk(data.content);
-            else if (data.type === 'done') onDone();
+            else if (data.type === 'sources') {
+              // reserved for future source rendering
+            } else if (data.type === 'error') {
+              onError(new Error(data.detail || 'Generation failed'));
+            } else if (data.type === 'done') onDone(data.session_id);
           }
         }
       }

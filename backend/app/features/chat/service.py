@@ -32,16 +32,32 @@ class ChatService:
         context = self.prompt_builder.build(sources, req.message)
 
         messages = self.repo.get_messages(session_id)
+        source_data = [
+            {"chunk_id": s.chunk_id, "title": s.document_title, "page": s.page_number}
+            for s in sources
+        ]
 
         async def generate():
-            provider = self.model_service.get_provider(model, user_id)
-            async for chunk in provider.stream_chat(context, messages):
-                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+            answer = []
+            try:
+                provider = self.model_service.get_provider(model, user_id)
+                async for chunk in provider.stream_chat(context, messages):
+                    answer.append(chunk)
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+            except Exception as exc:  # surface the failure to the client cleanly
+                detail = getattr(exc, "detail", None) or str(exc)
+                yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
+                return
 
-            source_data = [
-                {"chunk_id": s.chunk_id, "title": s.document_title, "page": s.page_number}
-                for s in sources
-            ]
+            # Persist the assistant reply so reloading the session restores it
+            self.repo.add_message(
+                session_id,
+                "assistant",
+                "".join(answer),
+                sources=json.dumps(source_data),
+                model_used=model.get("id"),
+            )
+
             yield f"data: {json.dumps({'type': 'sources', 'sources': source_data})}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
 

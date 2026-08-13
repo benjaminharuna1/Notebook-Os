@@ -8,6 +8,13 @@ quantized GGUF models (chat + embeddings) in-process on CPU, so it works on low-
 devices. Users with more powerful machines can optionally enable **Ollama** or enter
 **OpenAI / Anthropic / Google API keys** in Settings.
 
+### Features
+- Chat over your documents with streaming responses and per-chat session history
+- RAG search across your PDF library (vector + knowledge graph)
+- Local or cloud models (Ollama, OpenAI, Anthropic, Google), switched per user
+- API keys are encrypted at rest; uploads are size-limited to `MAX_UPLOAD_SIZE_MB`
+- Auth endpoints are rate-limited per client IP
+
 ## Quick Start
 
 ### Prerequisites
@@ -52,6 +59,12 @@ under `GET /api/v1/models/local/available` and selectable in the UI.)
 cd frontend
 npm install
 npm run dev
+```
+
+### Tests
+```bash
+cd backend
+.venv/Scripts/python -m pytest -q
 ```
 
 Optional: point the frontend at a different backend:

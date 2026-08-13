@@ -12,7 +12,7 @@ export function streamChat(
     '/chat',
     { session_id: sessionId, message },
     onChunk,
-    () => onDone(''),
+    onDone,
     onError,
   );
 }

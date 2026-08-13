@@ -8,5 +8,5 @@
 
 <div class="flex h-full flex-col">
   <Header />
-  <ChatWindow />
+  <ChatWindow sessionId={sessionId} />
 </div>
