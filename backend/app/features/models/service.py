@@ -1,7 +1,9 @@
 from app.core.config import settings
 from app.features.models.catalog import CLOUD_MODEL_PRESETS, get_recommendations
 from app.features.models.repository import ModelRepository
+from app.features.models.downloads import get_downloads
 from app.features.models.providers.ollama import OllamaProvider
+from app.features.models.providers.local import LocalLLMProvider
 from app.features.models.providers.openai import OpenAIProvider
 from app.features.models.providers.anthropic import AnthropicProvider
 from app.features.models.providers.google import GoogleProvider
@@ -27,6 +29,15 @@ class ModelService:
                 "name": m,
                 "provider": "ollama",
                 "model_id": m,
+                "source": "local",
+            })
+
+        for filename in self._local_gguf_files():
+            available.append({
+                "id": f"local:{filename}",
+                "name": filename,
+                "provider": "local",
+                "model_id": filename,
                 "source": "local",
             })
 
@@ -87,13 +98,47 @@ class ModelService:
             return None
         d = dict(row)
         d["id"] = f"{d['provider']}:{d['model_id']}"
-        d["source"] = "local" if d["provider"] == "ollama" else "cloud"
+        d["source"] = "local" if d["provider"] in ("ollama", "local") else "cloud"
         return d
+
+    @staticmethod
+    def _local_gguf_files() -> list:
+        """GGUF files already present in LOCAL_MODELS_DIR, usable as local chat models.
+
+        Files that are catalog embedding models (e.g. the nomic-embed GGUF) are
+        excluded — they can't generate chat responses.
+        """
+        import os
+
+        from app.features.models.catalog import HF_BY_KEY
+
+        embedding_files = {
+            m["filename"] for m in HF_BY_KEY.values() if m["kind"] == "embedding"
+        }
+        models_dir = os.path.abspath(settings.LOCAL_MODELS_DIR)
+        try:
+            files = sorted(
+                f for f in os.listdir(models_dir)
+                if f.lower().endswith(".gguf") and f not in embedding_files
+            )
+        except FileNotFoundError:
+            return []
+        return files
 
     def get_provider(self, model_config: dict, user_id: str):
         provider = model_config["provider"]
         if provider == "ollama":
             return OllamaProvider(model_config["model_id"])
+
+        temperature = float(self._user_temperature(user_id))
+        max_tokens = int(self._user_max_tokens(user_id))
+
+        if provider == "local":
+            return LocalLLMProvider(
+                model_config["model_id"],
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
 
         if not settings.CLOUD_ENABLED:
             raise ValueError("Cloud models are disabled on this instance")
@@ -108,9 +153,6 @@ class ModelService:
         if not api_key:
             raise ValueError(f"No {provider} API key configured — add one in Settings")
 
-        temperature = float(user_settings.get("temperature", 0.7))
-        max_tokens = int(user_settings.get("max_tokens", 2048))
-
         provider_map = {
             "openai": OpenAIProvider,
             "anthropic": AnthropicProvider,
@@ -124,6 +166,20 @@ class ModelService:
             api_key=api_key,
             temperature=temperature,
             max_tokens=max_tokens,
+        )
+
+    def _user_temperature(self, user_id: str) -> float:
+        if not self.settings_service:
+            return settings.DEFAULT_TEMPERATURE
+        return self.settings_service.get_settings(user_id).settings.get(
+            "temperature", settings.DEFAULT_TEMPERATURE
+        )
+
+    def _user_max_tokens(self, user_id: str) -> int:
+        if not self.settings_service:
+            return settings.DEFAULT_MAX_TOKENS
+        return self.settings_service.get_settings(user_id).settings.get(
+            "max_tokens", settings.DEFAULT_MAX_TOKENS
         )
 
     def list_ollama_available(self):
@@ -170,6 +226,7 @@ class ModelService:
         tier = user_settings.get("device_tier", "medium")
         recs = get_recommendations(tier)
         recs["cloud_presets"] = CLOUD_MODEL_PRESETS
+        recs["downloads"] = get_downloads()["downloads"]
         return recs
 
     def _seed_default_model(self, user_id: str):

@@ -8,12 +8,13 @@ from app.shared.logger import logger
 
 _embedding_lock = threading.Lock()
 _embedding_model = None
+_embedding_path = None
 
 
 def _load_embedding_model(model_path: str):
-    global _embedding_model
+    global _embedding_model, _embedding_path
     with _embedding_lock:
-        if _embedding_model is not None:
+        if _embedding_model is not None and _embedding_path == model_path:
             return _embedding_model
         try:
             from llama_cpp import Llama
@@ -30,6 +31,7 @@ def _load_embedding_model(model_path: str):
             embedding=True,
             verbose=False,
         )
+        _embedding_path = model_path
         return _embedding_model
 
 

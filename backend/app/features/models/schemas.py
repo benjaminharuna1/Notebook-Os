@@ -14,3 +14,7 @@ class ModelConfig(BaseModel):
 
 class SwitchModelRequest(BaseModel):
     model_id: str
+
+
+class DownloadModelRequest(BaseModel):
+    key: str

@@ -52,8 +52,10 @@ class SettingsService:
         updates = req.model_dump(exclude_unset=True)
         current.update(updates)
 
-        # Choosing a device tier also applies that tier's local model defaults
-        tier = current.get("device_tier")
+        # Choosing a device tier also applies that tier's local model defaults.
+        # Only when the tier itself changed in this request — otherwise saving
+        # settings would clobber a model the user picked from a dropdown.
+        tier = updates.get("device_tier")
         if tier in DEVICE_TIERS:
             t = DEVICE_TIERS[tier]
             current["default_llm"] = t["default_llm"]

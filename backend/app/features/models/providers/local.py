@@ -10,6 +10,7 @@ from app.shared.logger import logger
 
 _model_lock = threading.Lock()
 _llm_instance = None
+_llm_path = None
 
 
 def get_local_model_path(model_id: str) -> str:
@@ -28,10 +29,14 @@ def get_local_model_path(model_id: str) -> str:
 
 
 def _load_llm(model_path: str):
-    """Lazy-load a single shared Llama instance (module-level singleton)."""
-    global _llm_instance
+    """Lazy-load a single shared Llama instance (module-level singleton).
+
+    Reloads automatically if a different GGUF file is selected, so switching
+    between downloaded models actually swaps the model in memory.
+    """
+    global _llm_instance, _llm_path
     with _model_lock:
-        if _llm_instance is not None:
+        if _llm_instance is not None and _llm_path == model_path:
             return _llm_instance
         try:
             from llama_cpp import Llama
@@ -47,13 +52,15 @@ def _load_llm(model_path: str):
             n_threads=settings.LLAMA_THREADS,
             verbose=False,
         )
+        _llm_path = model_path
         return _llm_instance
 
 
 def reset_llm():
     """Drop the cached model (used in tests)."""
-    global _llm_instance
+    global _llm_instance, _llm_path
     _llm_instance = None
+    _llm_path = None
 
 
 class LocalLLMProvider(BaseLLMProvider):

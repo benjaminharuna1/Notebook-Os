@@ -1,5 +1,5 @@
 import { api } from '$lib/core/api/client';
-import type { LocalStatus, ModelCatalog, UserSettings } from './types';
+import type { LocalStatus, ModelCatalog, ModelDownload, UserSettings } from './types';
 
 export async function getSettings(): Promise<{ settings: UserSettings }> {
   return api.get<{ settings: UserSettings }>('/settings');
@@ -15,4 +15,12 @@ export async function getLocalStatus(): Promise<LocalStatus> {
 
 export async function getCatalog(): Promise<ModelCatalog> {
   return api.get<ModelCatalog>('/models/catalog');
+}
+
+export async function startModelDownload(key: string): Promise<{ status: string }> {
+  return api.post<{ status: string }>('/models/hf/download', { key });
+}
+
+export async function getModelDownloads(): Promise<{ downloads: ModelDownload[] }> {
+  return api.get<{ downloads: ModelDownload[] }>('/models/hf/downloads');
 }

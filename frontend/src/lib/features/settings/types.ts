@@ -7,7 +7,7 @@ export interface UserSettings {
   provider: string;
   local_model: string;
   device_tier: 'low' | 'medium' | 'high';
-  embedding_provider: 'fastembed' | 'ollama';
+  embedding_provider: 'fastembed' | 'ollama' | 'local';
   embedding_model: string;
   cloud_enabled: boolean;
   openai_api_key: string;
@@ -29,9 +29,25 @@ export interface LocalStatus {
   recommended_embedding: { provider: string; model: string };
 }
 
+export interface ModelDownload {
+  key: string;
+  name: string;
+  kind: 'chat' | 'embedding';
+  tier: string;
+  size_label: string;
+  note: string;
+  downloaded: boolean;
+  status: 'idle' | 'downloading' | 'done' | 'error';
+  progress: number;
+  downloaded_bytes: number;
+  total_bytes: number;
+  error: string | null;
+}
+
 export interface ModelCatalog {
   device_tier: string;
   llm: string[];
   embeddings: { provider: string; model: string; dim: number; requires: string; note: string }[];
   cloud_presets: Record<string, string[]>;
+  downloads: ModelDownload[];
 }
