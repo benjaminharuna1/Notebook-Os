@@ -2,6 +2,7 @@ import json
 
 from fastapi.responses import StreamingResponse
 
+from app.shared.logger import logger
 from app.features.chat.repository import ChatRepository
 from app.features.chat.prompt_builder import PromptBuilder
 from app.features.models.service import ModelService

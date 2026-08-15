@@ -1,3 +1,4 @@
+import json
 from typing import AsyncGenerator, List
 
 import httpx
@@ -19,9 +20,24 @@ class OllamaProvider(BaseLLMProvider):
                 "/api/chat",
                 json={"model": self.model_id, "messages": ollama_messages, "stream": True},
             ) as response:
+                if response.status_code != 200:
+                    try:
+                        body = json.loads(await response.aread())
+                        detail = body.get("error", response.reason_phrase)
+                    except Exception:
+                        detail = response.reason_phrase
+                    if "not found" in str(detail).lower():
+                        detail = f"{detail} — pull it with: ollama pull {self.model_id}"
+                    raise RuntimeError(f"Ollama error ({response.status_code}): {detail}")
+
                 async for line in response.aiter_lines():
-                    if line:
-                        import json
+                    if not line:
+                        continue
+                    try:
                         data = json.loads(line)
-                        if "message" in data and "content" in data["message"]:
-                            yield data["message"]["content"]
+                    except json.JSONDecodeError:
+                        continue
+                    if "error" in data:
+                        raise RuntimeError(f"Ollama error: {data['error']}")
+                    if "message" in data and "content" in data["message"]:
+                        yield data["message"]["content"]
