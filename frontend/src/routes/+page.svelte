@@ -2,6 +2,6 @@
   import { goto } from '$app/navigation';
 
   $effect(() => {
-    goto('/chat');
+    goto('/projects');
   });
 </script>

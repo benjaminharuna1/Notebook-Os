@@ -18,7 +18,7 @@
       const res = await register(email, username, password);
       token.set(res.token);
       currentUser.set(res.user);
-      goto('/chat');
+      goto('/projects');
     } catch (e) {
       error = (e as Error).message;
     } finally {

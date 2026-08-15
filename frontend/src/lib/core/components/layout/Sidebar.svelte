@@ -4,30 +4,57 @@
   import { currentUser, token } from '$lib/features/auth/store';
   import { logout } from '$lib/features/auth/api';
   import { listSessions, deleteSession } from '$lib/features/chat/api';
+  import { getProject } from '$lib/features/projects/api';
   import type { ChatSession } from '$lib/features/chat/types';
+  import type { Project } from '$lib/features/projects/types';
 
-  const links = [
+  const globalLinks = [
     { href: '/projects', label: 'Projects', icon: '📁' },
-    { href: '/chat', label: 'Chat', icon: '💬' },
-    { href: '/library', label: 'Library', icon: '📚' },
-    { href: '/search', label: 'Search', icon: '🔍' },
     { href: '/graph', label: 'Graph', icon: '🕸️' },
     { href: '/skills', label: 'Skills', icon: '🧠' },
     { href: '/settings', label: 'Settings', icon: '⚙️' },
   ];
 
   let sessions = $state<ChatSession[]>([]);
+  let project = $state<Project | null>(null);
 
-  const projectChatPath = $derived.by(() => {
-    const m = /^\/projects\/([^/]+)\/chat/.exec($page.url.pathname);
+  const projectId = $derived.by(() => {
+    const m = /^\/projects\/([^/]+)/.exec($page.url.pathname);
     return m ? m[1] : null;
   });
 
-  const sessionsBase = $derived(projectChatPath ? `/projects/${projectChatPath}/chat` : '/chat');
+  const inProject = $derived(projectId !== null);
+
+  const projectLinks = $derived.by(() => {
+    if (!projectId) return [];
+    return [
+      { href: `/projects/${projectId}/library`, label: 'Library', icon: '📚' },
+      { href: `/projects/${projectId}/search`, label: 'Search', icon: '🔍' },
+      { href: `/projects/${projectId}/chat`, label: 'Chat', icon: '💬' },
+    ];
+  });
+
+  const sessionsBase = $derived(projectId ? `/projects/${projectId}/chat` : '/chat');
+  const inProjectChat = $derived(/^\/projects\/[^/]+\/chat/.test($page.url.pathname));
+
+  function isProjectLinkActive(link: { href: string; label: string }) {
+    if ($page.url.pathname.startsWith(link.href)) return true;
+    if (link.label === 'Library' && $page.url.pathname === `/projects/${projectId}`) return true;
+    return false;
+  }
+
+  $effect(() => {
+    project = null;
+    if (!projectId) return;
+    getProject(projectId)
+      .then((p) => (project = p))
+      .catch(() => {});
+  });
 
   async function refreshSessions() {
+    if (!projectId) return;
     try {
-      const res = await listSessions(projectChatPath ?? undefined);
+      const res = await listSessions(projectId);
       sessions = res.sessions;
     } catch {
       sessions = [];
@@ -35,7 +62,7 @@
   }
 
   $effect(() => {
-    if ($page.url.pathname.startsWith('/chat') || projectChatPath) {
+    if (inProjectChat) {
       refreshSessions();
     }
   });
@@ -62,11 +89,11 @@
 
 <aside class="flex w-56 flex-col border-r border-slate-200 bg-slate-50">
   <div class="flex items-center gap-2 border-b border-slate-200 px-4 py-4">
-    <span class="text-lg font-bold text-indigo-600">Notebook AI</span>
+    <a href="/projects" class="text-lg font-bold text-indigo-600">Notebook AI</a>
   </div>
 
   <nav class="flex flex-col gap-1 p-2">
-    {#each links as link}
+    {#each globalLinks as link}
       <a
         href={link.href}
         class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 {$page.url.pathname.startsWith(link.href)
@@ -77,9 +104,35 @@
         <span>{link.label}</span>
       </a>
     {/each}
+
+    {#if inProject}
+      <div class="mt-2 border-t border-slate-200 pt-2">
+        <p class="truncate px-3 pb-1 text-xs font-semibold uppercase text-slate-400">
+          {project?.name ?? 'Project'}
+        </p>
+        {#each projectLinks as link}
+          <a
+            href={link.href}
+            class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 {isProjectLinkActive(link)
+              ? 'bg-indigo-50 text-indigo-700 font-medium'
+              : ''}"
+          >
+            <span>{link.icon}</span>
+            <span>{link.label}</span>
+          </a>
+        {/each}
+        <a
+          href="/projects"
+          class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+        >
+          <span>🗂️</span>
+          <span>All Projects</span>
+        </a>
+      </div>
+    {/if}
   </nav>
 
-  {#if $page.url.pathname.startsWith('/chat') || projectChatPath}
+  {#if inProjectChat}
     <div class="flex items-center justify-between px-4 pt-2 pb-1">
       <span class="text-xs font-medium uppercase text-slate-400">Sessions</span>
       <button

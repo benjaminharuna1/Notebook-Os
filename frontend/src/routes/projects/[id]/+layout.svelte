@@ -11,7 +11,12 @@
   let notFound = $state(false);
 
   const projectId = $derived($page.params.id);
-  const active = $derived($page.url.pathname.includes('/chat') ? 'chat' : 'docs');
+  const active = $derived.by(() => {
+    const p = $page.url.pathname;
+    if (p.includes('/search')) return 'search';
+    if (p.includes('/chat')) return 'chat';
+    return 'library';
+  });
 
   $effect(() => {
     project = null;
@@ -34,12 +39,20 @@
       {/if}
       <nav class="mt-2 flex gap-5 text-sm">
         <a
-          href="/projects/{projectId}"
-          class="pb-1 {active === 'docs'
+          href="/projects/{projectId}/library"
+          class="pb-1 {active === 'library'
             ? 'border-b-2 border-indigo-600 font-medium text-indigo-600'
             : 'text-slate-500 hover:text-slate-800'}"
         >
-          Documents
+          Library
+        </a>
+        <a
+          href="/projects/{projectId}/search"
+          class="pb-1 {active === 'search'
+            ? 'border-b-2 border-indigo-600 font-medium text-indigo-600'
+            : 'text-slate-500 hover:text-slate-800'}"
+        >
+          Search
         </a>
         <a
           href="/projects/{projectId}/chat"

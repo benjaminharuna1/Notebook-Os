@@ -67,7 +67,10 @@
           {doc.file_type}
         </span>
         <div class="min-w-0 flex-1">
-          <a href="/library/{doc.id}" class="font-medium text-slate-900 hover:text-indigo-600">
+          <a
+            href={projectId ? `/projects/${projectId}/library/${doc.id}` : `/library/${doc.id}`}
+            class="font-medium text-slate-900 hover:text-indigo-600"
+          >
             {doc.title}
           </a>
           <p class="truncate text-xs text-slate-400">{doc.filename}</p>
