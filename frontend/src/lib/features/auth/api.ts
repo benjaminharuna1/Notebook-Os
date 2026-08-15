@@ -5,8 +5,8 @@ export async function register(email: string, username: string, password: string
   return api.post<AuthResponse>('/auth/register', { email, username, password });
 }
 
-export async function login(email: string, password: string): Promise<AuthResponse> {
-  return api.post<AuthResponse>('/auth/login', { email, password });
+export async function login(identifier: string, password: string): Promise<AuthResponse> {
+  return api.post<AuthResponse>('/auth/login', { identifier, password });
 }
 
 export async function logout(): Promise<void> {

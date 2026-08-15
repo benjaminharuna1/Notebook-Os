@@ -10,7 +10,6 @@
 
   const globalLinks = [
     { href: '/projects', label: 'Projects', icon: '📁' },
-    { href: '/graph', label: 'Graph', icon: '🕸️' },
     { href: '/skills', label: 'Skills', icon: '🧠' },
     { href: '/settings', label: 'Settings', icon: '⚙️' },
   ];
@@ -31,6 +30,7 @@
       { href: `/projects/${projectId}/library`, label: 'Library', icon: '📚' },
       { href: `/projects/${projectId}/search`, label: 'Search', icon: '🔍' },
       { href: `/projects/${projectId}/chat`, label: 'Chat', icon: '💬' },
+      { href: `/projects/${projectId}/graph`, label: 'Graph', icon: '🕸️' },
     ];
   });
 

@@ -48,15 +48,15 @@ class AuthService:
     def login(self, req: LoginRequest, response: Response) -> AuthResponse:
         cursor = self.db.cursor()
         cursor.execute(
-            "SELECT id, email, username, password_hash FROM users WHERE email = ?",
-            (req.email,),
+            "SELECT id, email, username, password_hash FROM users WHERE email = ? OR username = ?",
+            (req.identifier, req.identifier),
         )
         row = cursor.fetchone()
 
         if not row or not verify_password(req.password, row["password_hash"]):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password",
+                detail="Invalid email/username or password",
             )
 
         token = create_jwt(row["id"])

@@ -15,6 +15,7 @@
     const p = $page.url.pathname;
     if (p.includes('/search')) return 'search';
     if (p.includes('/chat')) return 'chat';
+    if (p.includes('/graph')) return 'graph';
     return 'library';
   });
 
@@ -61,6 +62,14 @@
             : 'text-slate-500 hover:text-slate-800'}"
         >
           Chat
+        </a>
+        <a
+          href="/projects/{projectId}/graph"
+          class="pb-1 {active === 'graph'
+            ? 'border-b-2 border-indigo-600 font-medium text-indigo-600'
+            : 'text-slate-500 hover:text-slate-800'}"
+        >
+          Graph
         </a>
       </nav>
     </div>

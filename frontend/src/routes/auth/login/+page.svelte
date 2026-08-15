@@ -4,17 +4,17 @@
   import { currentUser, token } from '$lib/features/auth/store';
   import PasswordInput from '$lib/core/components/ui/PasswordInput.svelte';
 
-  let email = $state('');
+  let identifier = $state('');
   let password = $state('');
   let error = $state('');
   let loading = $state(false);
 
   async function handleLogin() {
-    if (!email || !password) return;
+    if (!identifier || !password) return;
     loading = true;
     error = '';
     try {
-      const res = await login(email, password);
+      const res = await login(identifier, password);
       token.set(res.token);
       currentUser.set(res.user);
       goto('/projects');
@@ -36,11 +36,12 @@
 
     <form onsubmit={(e) => { e.preventDefault(); handleLogin(); }} class="space-y-4">
       <div>
-        <label for="email" class="mb-1 block text-sm font-medium text-slate-700">Email</label>
+        <label for="identifier" class="mb-1 block text-sm font-medium text-slate-700">Email or Username</label>
         <input
-          id="email"
-          type="email"
-          bind:value={email}
+          id="identifier"
+          type="text"
+          bind:value={identifier}
+          autocomplete="username"
           class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm outline-none focus:border-indigo-500"
           required
         />

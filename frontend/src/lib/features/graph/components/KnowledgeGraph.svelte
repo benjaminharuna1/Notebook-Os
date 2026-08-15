@@ -1,5 +1,5 @@
 <script lang="ts">
-  let nodes = $state([]);
+  let { projectId }: { projectId?: string } = $props();
 </script>
 
 <div class="flex h-full items-center justify-center text-slate-400">
