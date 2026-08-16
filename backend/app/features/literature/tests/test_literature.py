@@ -536,3 +536,65 @@ def test_extract_paper_metadata_parses_object_reply():
 
     assert fields["title"] == "Widgets"
     assert fields["year"] == 2021
+
+
+def test_extract_paper_metadata_title_is_title_cased():
+    db = _db()
+    llm = LiteratureLLMService(db)
+
+    async def fake_call(self, user_id, system, user):
+        return json.dumps(
+            {
+                "title": "deep learning for crop yield prediction",
+                "authors": ["Wright, W."],
+                "year": 2021,
+            }
+        )
+
+    with patch.object(LiteratureLLMService, "active_model", return_value={"id": "m"}), patch.object(
+        LiteratureLLMService, "_call", new=fake_call
+    ):
+        fields = llm.extract_paper_metadata("u1", "The first page of text", "farming.pdf")
+
+    assert fields["title"] == "Deep Learning For Crop Yield Prediction"
+
+
+def test_paper_chunks_evenly_samples_full_document():
+    db = _db()
+    llm = LiteratureLLMService(db)
+    for i in range(20):
+        _seed_chunk(db, f"c{i}", "p1", f"chunk number {i}", index=i, page=(i // 3) + 1)
+
+    chunks = llm._paper_chunks("p1", limit=5)
+
+    assert len(chunks) == 5
+    texts = [text for _, text in chunks]
+    assert texts[0] == "chunk number 0"
+    assert texts[-1] == "chunk number 19"
+
+
+def test_paper_chunks_returns_all_when_fewer_than_limit():
+    db = _db()
+    llm = LiteratureLLMService(db)
+    for i in range(3):
+        _seed_chunk(db, f"c{i}", "p1", f"chunk number {i}", index=i, page=i + 1)
+
+    chunks = llm._paper_chunks("p1", limit=5)
+
+    assert [text for _, text in chunks] == ["chunk number 0", "chunk number 1", "chunk number 2"]
+    assert [page for page, _ in chunks] == [1, 2, 3]
+
+
+def test_paper_prompt_covers_sections_and_labels_pages():
+    db = _db()
+    llm = LiteratureLLMService(db)
+
+    system, user = llm._paper_prompt(
+        {"title": "Widgets", "authors": ["Wright, W."], "year": 2021, "abstract": "Brief abstract."},
+        [(1, "Introduction text"), (4, "Methods text"), (7, "Discussion text")],
+    )
+
+    assert "Excerpt 1" in user and "Excerpt 3" in user
+    assert "page 1" in user and "page 7" in user
+    assert "Introduction text" in user and "Discussion text" in user
+    assert "sections" in system and "abstract" in system

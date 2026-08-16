@@ -52,6 +52,22 @@ _TITLE_STOPWORDS = {
 }
 
 
+def title_case(text: Optional[str]) -> Optional[str]:
+    """Capitalises the first letter of every word (Title Case).
+
+    Acronyms and tokens already in all caps of two or more characters (AI, LLM,
+    MRI, COVID-19) are preserved verbatim instead of being lowercased."""
+    if not text:
+        return text
+    words = []
+    for word in str(text).split():
+        if len(word) >= 2 and word.isupper():
+            words.append(word)
+        else:
+            words.append(word[:1].upper() + word[1:].lower())
+    return " ".join(words)
+
+
 def _plausible_doi(token: str) -> bool:
     token = token.rstrip(".").lower()
     return bool(_DOI_CORE_RE.fullmatch(token))

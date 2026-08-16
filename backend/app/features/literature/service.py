@@ -14,6 +14,7 @@ from app.features.literature.metadata import (
     extract_doi,
     extract_year,
     heuristic_title,
+    title_case,
 )
 from app.features.literature.schemas import ClusterInfo, LiteratureMapResponse, PaperEdge, PaperNode
 from app.features.settings.service import SettingsService
@@ -482,7 +483,7 @@ class LiteratureService:
                 cleaned = [a.strip() for a in value if isinstance(a, str) and a.strip()]
                 paper["authors"] = cleaned
             elif key == "title":
-                paper["title"] = (value or "").strip() or paper["title"]
+                paper["title"] = title_case(value) or paper["title"]
             elif key == "year":
                 paper["year"] = value
             else:
@@ -811,7 +812,7 @@ class LiteratureService:
         if name.lower().endswith(".pdf"):
             name = name[:-4]
         name = re.sub(r"[\s_]+", " ", name).strip()
-        return name or None
+        return title_case(name) if name else None
 
     def _apply_record(self, paper: dict, record: dict, verified: bool, fill: bool = False) -> None:
         paper["verification_status"] = "verified" if verified else "unverified"

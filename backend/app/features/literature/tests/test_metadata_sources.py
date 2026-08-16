@@ -3,7 +3,13 @@ import sqlite3
 from unittest.mock import MagicMock, patch
 
 from app.features.literature import metadata as metadata_sources
-from app.features.literature.metadata import extract_doi, extract_issn, extract_year, heuristic_title
+from app.features.literature.metadata import (
+    extract_doi,
+    extract_issn,
+    extract_year,
+    heuristic_title,
+    title_case,
+)
 from app.features.literature.service import LiteratureService
 
 _SCHEMA = """
@@ -80,6 +86,23 @@ def test_extract_doi_returns_none_without_doi():
 def test_extract_issn_finds_issn():
     text = "ISSN 1234-5678 (print), e-ISSN 9876-543X"
     assert extract_issn(text) == "1234-5678"
+
+
+def test_title_case_capitalises_every_word():
+    assert (
+        title_case("deep learning for crop yield prediction")
+        == "Deep Learning For Crop Yield Prediction"
+    )
+
+
+def test_title_case_preserves_acronyms():
+    assert title_case("a survey of LLM agents in education") == "A Survey Of LLM Agents In Education"
+    assert title_case("COVID-19 severity in small samples") == "COVID-19 Severity In Small Samples"
+
+
+def test_title_case_handles_empty_and_none():
+    assert title_case("") == ""
+    assert title_case(None) is None
 
 
 def test_heuristic_title_picks_the_most_wordy_early_line():

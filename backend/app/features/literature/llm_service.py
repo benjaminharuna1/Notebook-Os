@@ -3,11 +3,12 @@ import json
 import re
 from typing import List, Optional, Tuple
 
+from app.features.literature.metadata import title_case
 from app.features.models.service import ModelService
 
 ENTRY_KEYS = ("research_objective", "methodology", "key_findings", "limitations", "relevance")
-MAX_PAPER_CHUNKS = 8
-CHUNK_CHAR_CAP = 1800
+MAX_PAPER_CHUNKS = 10
+CHUNK_CHAR_CAP = 2000
 
 _FALLBACK_MARK = "LLM unavailable — derived from abstract."
 _METHOD_HINTS = (
@@ -118,7 +119,11 @@ class LiteratureLLMService:
             )
             raw = asyncio.run(self._call(user_id, METADATA_SYSTEM_PROMPT, prompt))
             parsed = self._parse_json(raw)
-            return parsed if isinstance(parsed, dict) else {}
+            if not isinstance(parsed, dict):
+                return {}
+            if parsed.get("title"):
+                parsed["title"] = title_case(parsed["title"])
+            return parsed
         except Exception:
             return {}
 
@@ -279,26 +284,35 @@ class LiteratureLLMService:
 
     # --- paper literature-review entries ------------------------------------
 
-    def _paper_chunks(self, paper_id: str, limit: int = MAX_PAPER_CHUNKS) -> List[str]:
+    def _paper_chunks(self, paper_id: str, limit: int = MAX_PAPER_CHUNKS) -> List[Tuple[Optional[int], str]]:
+        """Evenly sampled excerpts from the paper's full text.
+
+        Selecting evenly spaced chunks — instead of just the first ``limit`` in
+        page order — means the prompt covers every major section (Introduction,
+        Methods, Results, Discussion/Conclusion), so fields that only appear
+        deep in the body are still captured even when the abstract omits them."""
         rows = self.db.execute(
-            """SELECT content FROM chunks
+            """SELECT content, page_number FROM chunks
                WHERE document_id = ?
                ORDER BY page_number ASC, chunk_index ASC""",
             (paper_id,),
         ).fetchall()
-        out: List[str] = []
+        items: List[Tuple[Optional[int], str]] = []
         for row in rows:
             text = (row["content"] or "").strip()
             if not text:
                 continue
             if len(text) > CHUNK_CHAR_CAP:
                 text = text[:CHUNK_CHAR_CAP]
-            out.append(text)
-            if len(out) >= limit:
-                break
-        return out
+            items.append((row["page_number"], text))
+        if not items:
+            return []
+        if len(items) <= limit:
+            return items
+        picks = sorted({round(i * (len(items) - 1) / (limit - 1)) for i in range(limit)})
+        return [items[idx] for idx in picks]
 
-    def _paper_prompt(self, paper: dict, chunks: List[str]) -> Tuple[str, str]:
+    def _paper_prompt(self, paper: dict, chunks: List[Tuple[Optional[int], str]]) -> Tuple[str, str]:
         header = [f"Title: {paper.get('title') or 'Untitled'}"]
         authors = paper.get("authors") or []
         if authors:
@@ -307,7 +321,10 @@ class LiteratureLLMService:
             header.append(f"Year: {paper['year']}")
         if paper.get("abstract"):
             header.append(f"Abstract: {paper['abstract']}")
-        excerpts = [f"[Excerpt {i}]\n{chunk}" for i, chunk in enumerate(chunks, 1)]
+        excerpts = [
+            f"[Excerpt {i} — page {page or 'n/a'}]\n{text}"
+            for i, (page, text) in enumerate(chunks, 1)
+        ]
         if not excerpts:
             excerpts = ["[No full text available — rely on the title and abstract.]"]
         system = (
@@ -327,7 +344,11 @@ class LiteratureLLMService:
             "(supports a method, contradicts a theory, provides context).\n"
             "Rules:\n"
             "- Every value must be 2-4 sentences, grounded in the paper's title, "
-            "abstract and excerpts below; do not invent facts.\n"
+            "abstract and the excerpts below; do not invent facts.\n"
+            "- The excerpts span the paper's sections (Introduction, Methods, "
+            "Results, Discussion/Conclusion). Do not rely on the abstract alone: "
+            "the abstract often omits methodology, effect sizes and limitations, "
+            "so locate each field in the relevant section of the body text.\n"
             "- Never leave a field empty. If the paper is silent on a field, write "
             '"Not stated in the paper."\n'
             "- No markdown code fences, no commentary, no keys other than the five above."
