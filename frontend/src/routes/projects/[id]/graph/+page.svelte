@@ -7,7 +7,6 @@
     addTrackedConcept,
     deleteGraphCheckpoint,
     getDocumentThemes,
-    getGenerationJob,
     getGraphCheckpoint,
     listGraphHistory,
     listTrackedConcepts,
@@ -18,11 +17,16 @@
   } from '$lib/features/graph/api';
   import type {
     DocumentThemes,
-    GenerationJob,
     GraphCheckpoint,
     GraphResponse,
     TrackedConcept,
   } from '$lib/features/graph/types';
+  import {
+    actions as actionList,
+    pauseAction,
+    refreshActions,
+    resumeAction,
+  } from '$lib/features/actions/store';
 
   const projectId = $derived($page.params.id);
 
@@ -48,10 +52,17 @@
   let trackError = $state('');
   let history = $state<GraphCheckpoint[]>([]);
   let activeCheckpointId = $state<string | null>(null);
-  let generating = $state<GenerationJob | null>(null);
+  const generating = $derived(
+    ($actionList ?? []).find(
+      (a) =>
+        a.kind === 'graph' &&
+        a.project_id === projectId &&
+        (a.status === 'queued' || a.status === 'running' || a.status === 'paused')
+    ) ?? null
+  );
+  let handledGens = $state<string[]>([]);
   let checkpointLoading = $state(false);
   let aiMatches = $state<string[]>([]);
-  let genToken = 0;
   let refineToken = 0;
 
   $effect(() => {
@@ -90,7 +101,6 @@
 
   $effect(() => {
     if (!projectId) return;
-    genToken++;
     graph = null;
     tracked = [];
     trackedOnly = false;
@@ -99,7 +109,7 @@
     trackError = '';
     history = [];
     activeCheckpointId = null;
-    generating = null;
+    handledGens = [];
     checkpointLoading = false;
     loadHistory();
     listTrackedConcepts(projectId)
@@ -110,58 +120,59 @@
     loadThemes();
   });
 
+  $effect(() => {
+    if (!projectId) return;
+    for (const a of $actionList ?? []) {
+      if (a.kind !== 'graph' || a.project_id !== projectId) continue;
+      if (a.status !== 'done' && a.status !== 'error') continue;
+      if (handledGens.includes(a.id)) continue;
+      handledGens = [...handledGens, a.id];
+      if (a.status === 'done') {
+        void loadThemes();
+        void loadHistory();
+        if (a.checkpoint?.id) void loadCheckpoint(a.checkpoint.id);
+      } else {
+        error = a.error ?? 'Graph generation failed';
+      }
+    }
+  });
+
   async function generate() {
     if (!projectId || generating?.status === 'running') return;
-    const token = ++genToken;
     try {
-      const job = await startGraphGeneration(projectId);
-      if (token !== genToken) return;
-      generating = job;
-      await pollJob(job.id, token);
+      await startGraphGeneration(projectId);
+      await refreshActions();
     } catch (e) {
-      if (token !== genToken) return;
       error = e instanceof Error ? e.message : String(e ?? 'Unknown error');
-      generating = null;
     }
   }
 
-  async function pollJob(jobId: string, token: number) {
-    while (true) {
-      await new Promise((r) => setTimeout(r, 300));
-      if (token !== genToken) return;
-      const job = await getGenerationJob(jobId);
-      if (token !== genToken) return;
-      generating = job;
-      if (job.status === 'done') {
-        await Promise.all([loadThemes(), loadHistory()]);
-        if (token !== genToken) return;
-        if (job.checkpoint) await loadCheckpoint(job.checkpoint.id, token);
-        if (token !== genToken) return;
-        generating = null;
-        return;
-      }
-      if (job.status === 'error') {
-        error = job.error ?? 'Graph generation failed';
-        generating = null;
-        return;
-      }
+  async function toggleGenPause() {
+    if (!generating) return;
+    try {
+      if (generating.status === 'paused') await resumeAction(generating.id);
+      else await pauseAction(generating.id);
+      await refreshActions();
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e ?? 'Could not pause generation');
     }
   }
 
-  async function loadCheckpoint(checkpointId: string, token = genToken) {
-    if (!checkpointId || token !== genToken) return;
+  async function loadCheckpoint(checkpointId: string) {
+    if (!checkpointId) return;
+    const project = projectId;
     checkpointLoading = true;
     error = '';
     try {
       const detail = await getGraphCheckpoint(checkpointId);
-      if (token !== genToken) return;
+      if (project !== projectId) return;
       graph = detail?.graph ?? { nodes: [], edges: [] };
       activeCheckpointId = checkpointId;
     } catch (e) {
-      if (token !== genToken) return;
+      if (project !== projectId) return;
       error = e instanceof Error ? e.message : String(e ?? 'Unknown error');
     } finally {
-      if (token === genToken) checkpointLoading = false;
+      if (project === projectId) checkpointLoading = false;
     }
   }
 
@@ -511,9 +522,9 @@
         <span class="flex items-center gap-1.5"><span class="text-amber-500">★</span>Tracked</span>
       </div>
     {/if}
-    {#if generating?.status === 'running'}
+    {#if generating}
       <div class="absolute inset-4 z-20 flex flex-col items-center justify-center gap-3 rounded-2xl bg-[#0b1120]/85 text-sm text-slate-200 backdrop-blur-sm">
-        <p>Generating graph…</p>
+        <p>{generating.status === 'paused' ? 'Graph generation paused' : 'Generating graph…'}</p>
         <div class="h-2 w-64 overflow-hidden rounded-full bg-white/10">
           <div
             class="h-full rounded-full bg-indigo-400 transition-all duration-300"
@@ -521,8 +532,14 @@
           ></div>
         </div>
         <p class="text-xs text-slate-400">
-          {generating.progress ?? 0}% · {generating.stage ?? 'Working'}
+          {Math.round(generating.progress ?? 0)}% · {generating.stage ?? 'Working'}
         </p>
+        <button
+          onclick={toggleGenPause}
+          class="rounded-lg border border-white/20 px-4 py-1.5 text-xs font-medium text-slate-100 hover:bg-white/10"
+        >
+          {generating.status === 'paused' ? '▶ Continue' : '⏸ Pause'}
+        </button>
       </div>
     {/if}
   </div>

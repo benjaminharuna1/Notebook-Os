@@ -758,7 +758,8 @@ class LiteratureService:
 
         try:
             llm = LiteratureLLMService(self.db)
-            return llm.extract_paper_metadata(user_id, first_page, filename or "") or {}
+            fields = llm.extract_paper_metadata(user_id, first_page, filename or "")
+            return fields if isinstance(fields, dict) else {}
         except Exception:
             return {}
 
@@ -1229,8 +1230,11 @@ class LiteratureService:
         report(15, "Enriching metadata")
         total = len(papers)
         for idx, paper in enumerate(papers):
-            self.enrich(paper, user_id=user_id)
-            self.save_enrichment(paper)
+            try:
+                self.enrich(paper, user_id=user_id)
+                self.save_enrichment(paper)
+            except Exception:
+                continue
             report(15 + int((idx + 1) / total * 30), "Enriching metadata")
 
         report(45, "Embedding papers")

@@ -43,6 +43,15 @@ MAX_AI_PAPERS = 30
 MAX_AI_REF_LINES = 40
 AI_ABSTRACT_CAP = 300
 
+_ENTRY_RETRY_SYSTEM = (
+    "Your previous reply was not usable. Reply again with STRICT JSON only — a "
+    'single JSON object with exactly these keys: "research_objective", '
+    '"methodology", "key_findings", "limitations", "relevance". No markdown code '
+    "fences, no prose before or after, no extra keys. Every value must be 2-4 "
+    "sentences grounded in the paper above; if a field is not covered by the "
+    'paper, write "Not stated in the paper."'
+)
+
 
 class LiteratureLLMService:
     """LLM layer over the literature map.
@@ -108,7 +117,8 @@ class LiteratureLLMService:
                 "Return only the JSON object."
             )
             raw = asyncio.run(self._call(user_id, METADATA_SYSTEM_PROMPT, prompt))
-            return self._parse_json(raw)
+            parsed = self._parse_json(raw)
+            return parsed if isinstance(parsed, dict) else {}
         except Exception:
             return {}
 
@@ -128,6 +138,8 @@ class LiteratureLLMService:
         if row is None:
             return []
         data = json.loads(row["graph_json"])
+        if not isinstance(data, dict):
+            return []
         by_cluster: dict = {}
         for node in data.get("nodes", []):
             cid = node.get("cluster")
@@ -166,6 +178,8 @@ class LiteratureLLMService:
             try:
                 raw = await self._call(user_id, system, prompt)
                 parsed = self._parse_json(raw)
+                if not isinstance(parsed, dict):
+                    raise ValueError("cluster reply was not an object")
                 out.append(
                     {
                         "id": cid,
@@ -178,18 +192,68 @@ class LiteratureLLMService:
         return out
 
     @staticmethod
-    def _parse_json(raw: str) -> dict:
-        cleaned = raw.strip()
-        try:
-            return json.loads(cleaned)
-        except Exception:
-            match = re.search(r"\{.*\}", cleaned, re.S)
-            if match:
-                try:
-                    return json.loads(match.group(0))
-                except Exception:
-                    pass
+    def _parse_json(raw: str) -> dict | list:
+        """Best-effort JSON extraction tolerant of code fences and trailing prose.
+
+        Tries the raw reply as-is, then extracts the first balanced ``{...}``
+        or ``[...]`` block (string-aware), which survives models that wrap the
+        object in prose or markdown fences. Returns a dict or list, or ``{}``.
+        """
+        cleaned = (raw or "").strip()
+        if not cleaned:
+            return {}
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+        candidates = [cleaned]
+        for open_char in ("{", "["):
+            block = LiteratureLLMService._first_json_block(cleaned, open_char)
+            if block:
+                candidates.append(block)
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                parsed = json.loads(candidate)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(parsed, (dict, list)):
+                return parsed
         return {}
+
+    @staticmethod
+    def _first_json_block(text: str, open_char: str = "{") -> Optional[str]:
+        """Returns the first balanced block in ``text``, or None.
+
+        Tracks string literals so braces/brackets inside quoted values don't
+        confuse the depth counter. Stops at the first fully balanced block, so
+        prose after the JSON is ignored.
+        """
+        start = text.find(open_char)
+        if start == -1:
+            return None
+        close_char = "}" if open_char == "{" else "]"
+        depth = 0
+        in_string = False
+        escaped = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch == open_char:
+                depth += 1
+            elif ch == close_char:
+                depth -= 1
+                if depth == 0:
+                    return text[start : i + 1]
+        return None
 
     @staticmethod
     def _as_list(parsed) -> List[dict]:
@@ -201,6 +265,17 @@ class LiteratureLLMService:
                 if isinstance(value, list):
                     return value
         return []
+
+    @staticmethod
+    def _entry_fields(raw: str) -> dict:
+        """Extracts the five entry fields from an LLM reply as a dict.
+
+        Tolerant of non-object replies (arrays, prose) so a model that wraps
+        the answer differently still degrades to an empty/retryable pass."""
+        parsed = LiteratureLLMService._parse_json(raw)
+        if not isinstance(parsed, dict):
+            return {}
+        return {key: (parsed.get(key) or "").strip() for key in ENTRY_KEYS}
 
     # --- paper literature-review entries ------------------------------------
 
@@ -237,16 +312,25 @@ class LiteratureLLMService:
             excerpts = ["[No full text available — rely on the title and abstract.]"]
         system = (
             "You are a research analyst building a literature review matrix. "
-            "For the given paper, produce five concise fields. Reply with STRICT "
-            'JSON only, with exactly these keys: "research_objective", "methodology", '
-            '"key_findings", "limitations", "relevance". Each value should be 2-4 '
-            "sentences, grounded in the paper's text. Define each field as: "
-            "research_objective = primary purpose/hypothesis; "
-            "methodology = research design, data sources, sample size/demographics; "
-            "key_findings = main empirical or theoretical conclusions; "
-            "limitations = constrained samples, bias, scope limits, unaddressed variables; "
-            "relevance = how this study could inform the researcher's own work "
-            "(supports a method, contradicts a theory, provides context)."
+            "For the given paper, produce five concise fields that populate a "
+            "literature-mapping table. Reply with STRICT JSON only: a single JSON "
+            "object with exactly these five keys and nothing else — no markdown "
+            "code fences, no prose before or after, no extra keys:\n"
+            '{"research_objective": "...", "methodology": "...", '
+            '"key_findings": "...", "limitations": "...", "relevance": "..."}\n'
+            "Field definitions:\n"
+            '- "research_objective": the paper\'s primary purpose, research question or hypothesis.\n'
+            '- "methodology": research design, data sources, sample size/demographics, analysis approach.\n'
+            '- "key_findings": the paper\'s main empirical or theoretical conclusions.\n'
+            '- "limitations": constrained samples, bias, scope limits, unaddressed variables.\n'
+            '- "relevance": how this study could inform the researcher\'s own work '
+            "(supports a method, contradicts a theory, provides context).\n"
+            "Rules:\n"
+            "- Every value must be 2-4 sentences, grounded in the paper's title, "
+            "abstract and excerpts below; do not invent facts.\n"
+            "- Never leave a field empty. If the paper is silent on a field, write "
+            '"Not stated in the paper."\n'
+            "- No markdown code fences, no commentary, no keys other than the five above."
         )
         user_prompt = (
             "\n\n".join(header)
@@ -272,9 +356,14 @@ class LiteratureLLMService:
             model = self.active_model(user_id)
             if not model:
                 raise ValueError("No active model configured — pick one in Settings")
-            system, prompt = self._paper_prompt(paper, self._paper_chunks(paper["id"]))
-            raw = await self._call(user_id, system, prompt)
-            parsed = self._parse_json(raw)
+            system, user_prompt = self._paper_prompt(paper, self._paper_chunks(paper["id"]))
+            raw = await self._call(user_id, system, user_prompt)
+            fields = self._entry_fields(raw)
+            if not any(fields.values()):
+                raw = await self._call(user_id, _ENTRY_RETRY_SYSTEM, user_prompt)
+                fields = self._entry_fields(raw)
+            if not any(fields.values()):
+                raise ValueError("LLM returned no usable literature fields")
         except Exception:
             if overwrite:
                 raise
@@ -287,7 +376,6 @@ class LiteratureLLMService:
                 auto_generated=True,
             )
             return
-        fields = {key: (parsed.get(key) or "").strip() for key in ENTRY_KEYS}
         if overwrite:
             merged = {key: (fields.get(key) or None) for key in ENTRY_KEYS}
             service.upsert_entry(

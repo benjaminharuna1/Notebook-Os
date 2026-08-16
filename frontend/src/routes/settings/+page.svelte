@@ -172,7 +172,11 @@
   async function save() {
     saving = true;
     try {
-      const res = await updateSettings(settings);
+      const payload = { ...settings };
+      const n = Number(payload.max_concurrent_actions);
+      payload.max_concurrent_actions =
+        Number.isFinite(n) && n >= 1 ? Math.min(16, Math.round(n)) : 2;
+      const res = await updateSettings(payload);
       settings = res.settings;
       toasts.add('Settings saved', 'success');
     } catch (e) {
@@ -378,6 +382,30 @@
               <label class="mb-1 block text-sm font-medium text-slate-700">Temperature</label>
               <input type="number" step="0.1" min="0" max="2" bind:value={settings.temperature} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm" />
             </div>
+          </div>
+        </section>
+
+        <section>
+          <h2 class="mb-4 text-lg font-semibold text-slate-800">Background actions</h2>
+          <div class="rounded-lg border border-slate-200 p-4">
+            <div class="mb-2 flex flex-wrap items-center gap-3">
+              <label for="max-concurrent-actions" class="text-sm font-medium text-slate-700">
+                Run this many actions at once
+              </label>
+              <input
+                id="max-concurrent-actions"
+                type="number"
+                min="1"
+                max="16"
+                bind:value={settings.max_concurrent_actions}
+                class="w-24 rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+              />
+            </div>
+            <p class="text-xs leading-relaxed text-amber-700">
+              Actions include literature map builds and knowledge graph generations. The more
+              actions run at once, the more processing power your PC uses — keep it low on
+              low-end devices or while you need the machine for other work.
+            </p>
           </div>
         </section>
 

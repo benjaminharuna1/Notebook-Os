@@ -4,6 +4,7 @@ import sqlite3
 import pytest
 from fastapi import HTTPException
 
+from app.core.config import settings
 from app.features.skills.schemas import SkillManifest
 from app.features.skills.service import SkillsService, load_catalog
 
@@ -35,28 +36,60 @@ def _manifest(**overrides) -> SkillManifest:
 def test_catalog_loads_bundled_skills():
     ids = {m.id for m in load_catalog()}
     assert {"research-workflow", "citation-formatter", "summarize"} <= ids
+    assert "literature-mapping" in ids
 
 
-def test_install_list_enable_uninstall_flow():
+def test_load_catalog_supports_markdown_skill_folders(tmp_path, monkeypatch):
+    skill_dir = tmp_path / "custom-folder"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "# My Markdown Skill\n\nDescription line one. Description line two.\n\n## Rules\n\nDo the thing.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(settings, "SKILLS_CATALOG_DIR", str(tmp_path))
+    manifests = load_catalog()
+    assert len(manifests) == 1
+    m = manifests[0]
+    assert m.id == "custom-folder"
+    assert m.name == "Custom Folder"
+    assert "Description line one." in m.description
+    assert "Do the thing." in m.instructions
+
+
+def test_catalog_skills_auto_installed_for_every_user():
+    conn = _db()
+    service = SkillsService(conn)
+    catalog_ids = {m.id for m in load_catalog()}
+    for user in ("u1", "u2"):
+        installed = service.list_installed(user)
+        assert {i["skill"]["id"] for i in installed} == catalog_ids
+        assert all(i["enabled"] is True for i in installed)
+
+
+def test_toggle_enabled_affects_active_instructions():
     conn = _db()
     service = SkillsService(conn)
 
-    assert service.install("u1", "research-workflow") == {"success": True}
-    installed = service.list_installed("u1")
-    assert len(installed) == 1
-    assert installed[0]["skill"]["id"] == "research-workflow"
-    assert installed[0]["enabled"] is True
+    assert "Research Workflow" in service.active_instructions("u1")
 
     service.set_enabled("u1", "research-workflow", False)
-    assert service.list_installed("u1")[0]["enabled"] is False
+    assert "Research Workflow" not in service.active_instructions("u1")
+    rw = next(
+        i for i in service.list_installed("u1") if i["skill"]["id"] == "research-workflow"
+    )
+    assert rw["enabled"] is False
 
-    assert service.active_instructions("u1") == ""
     service.set_enabled("u1", "research-workflow", True)
-    instructions = service.active_instructions("u1")
-    assert "## Research Workflow" in instructions
+    assert "Research Workflow" in service.active_instructions("u1")
 
-    assert service.uninstall("u1", "research-workflow") == {"success": True}
-    assert service.list_installed("u1") == []
+
+def test_uninstall_catalog_skill_is_reinstalled_on_next_list():
+    conn = _db()
+    service = SkillsService(conn)
+    assert service.list_installed("u1")
+    service.uninstall("u1", "research-workflow")
+    ids = {i["skill"]["id"] for i in service.list_installed("u1")}
+    assert "research-workflow" in ids
 
 
 def test_catalog_install_unknown_skill_rejected():
@@ -66,22 +99,15 @@ def test_catalog_install_unknown_skill_rejected():
     assert excinfo.value.status_code == 404
 
 
-def test_install_is_scoped_per_user():
-    conn = _db()
-    service = SkillsService(conn)
-    service.install("u1", "summarize")
-    assert service.list_installed("u2") == []
-    assert service.active_instructions("u2") == ""
-
-
-def test_import_custom_skill():
+def test_import_custom_skill_is_per_user():
     conn = _db()
     service = SkillsService(conn)
 
     assert service.import_skill("u1", _manifest()) == {"success": True}
-    installed = service.list_installed("u1")
-    assert installed[0]["skill"]["id"] == "custom-skill"
+    assert "custom-skill" in {i["skill"]["id"] for i in service.list_installed("u1")}
+    assert "custom-skill" not in {i["skill"]["id"] for i in service.list_installed("u2")}
     assert "Do the thing." in service.active_instructions("u1")
+    assert "Do the thing." not in service.active_instructions("u2")
 
     with pytest.raises(HTTPException) as excinfo:
         service.import_skill("u1", _manifest())
@@ -95,11 +121,9 @@ def test_import_custom_skill():
 def test_catalog_flags_installed():
     conn = _db()
     service = SkillsService(conn)
-    service.install("u1", "summarize")
     catalog = service.list_catalog("u1")
-    by_id = {c["skill"]["id"]: c for c in catalog}
-    assert by_id["summarize"]["installed"] is True
-    assert by_id["research-workflow"]["installed"] is False
+    assert len(catalog) == len(load_catalog())
+    assert all(c["installed"] for c in catalog)
 
 
 def test_install_persists_manifest_json():

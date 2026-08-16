@@ -65,9 +65,9 @@ class Settings(BaseSettings):
     RATE_LIMIT_MAX_REQUESTS: int = 10
     RATE_LIMIT_WINDOW_SECONDS: int = 60
 
-    # Skill catalog directory. Leave empty to use the bundled catalog inside
-    # app/features/skills/catalog; point elsewhere (or at a registry mirror)
-    # to serve a different set of skills.
+    # Skill catalog directory. Leave empty to use the app-level skills folder
+    # (backend/skills); point elsewhere (or at a registry mirror) to serve a
+    # different set of skills.
     SKILLS_CATALOG_DIR: str = ""
 
     JWT_SECRET_KEY: str = "change-me-to-a-random-secret"

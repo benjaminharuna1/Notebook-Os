@@ -12,7 +12,7 @@ import type {
 
 export interface LiteratureBuildJob {
   id: string;
-  status: 'running' | 'done' | 'error';
+  status: 'queued' | 'running' | 'paused' | 'done' | 'error';
   progress: number;
   stage?: string;
   error?: string;
@@ -37,6 +37,13 @@ export async function getLiteratureMap(projectId: string): Promise<LiteratureMap
 
 export async function getLiteratureEntries(projectId: string): Promise<LiteratureEntry[]> {
   return api.get<LiteratureEntry[]>(`/projects/${projectId}/literature/entries`);
+}
+
+export async function getLiteratureEntry(
+  projectId: string,
+  paperId: string,
+): Promise<LiteratureEntry> {
+  return api.get<LiteratureEntry>(`/projects/${projectId}/literature/entries/${paperId}`);
 }
 
 export async function updateLiteratureEntry(

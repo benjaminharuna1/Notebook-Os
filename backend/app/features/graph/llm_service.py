@@ -56,6 +56,8 @@ class GraphLLMService:
         if not row:
             return []
         raw = json.loads(row["graph_json"])
+        if not isinstance(raw, dict):
+            return []
         return [n.get("label", "") for n in raw.get("nodes", []) if n.get("label")]
 
     async def refine_query(self, user_id: str, project_id: str, query: str) -> Dict:

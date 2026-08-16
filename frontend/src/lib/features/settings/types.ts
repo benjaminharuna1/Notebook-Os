@@ -19,6 +19,7 @@ export interface UserSettings {
   ollama_model: string;
   max_tokens: number;
   temperature: number;
+  max_concurrent_actions?: number;
 }
 
 export interface LocalStatus {

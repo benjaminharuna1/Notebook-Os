@@ -4,10 +4,12 @@
   import { pauseIngestion, resumeIngestion, reprocessIngestion, reprocessDocuments } from '$lib/features/ingestion/api';
   import {
     exportReferencesDocx,
+    getLiteratureEntry,
     getLiteratureJob,
     regenerateLiteratureMetadata,
     startLiteratureBuild,
     type LiteratureBuildJob,
+    type LiteratureEntry,
   } from '$lib/features/literature/api';
   import type { Document } from '../types';
 
@@ -26,6 +28,24 @@
   let actionInfo = $state('');
   let buildJob = $state<LiteratureBuildJob | null>(null);
   let buildToken = $state(0);
+
+  let viewPaper = $state<Document | null>(null);
+  let viewEntry = $state<LiteratureEntry | null>(null);
+  let viewLoading = $state(false);
+  let viewEmpty = $state(false);
+  let viewError = $state('');
+
+  const entryFields = $derived(
+    viewEntry
+      ? [
+          { label: 'Research Objective / Questions', value: viewEntry.research_objective },
+          { label: 'Methodology & Sample', value: viewEntry.methodology },
+          { label: 'Key Findings', value: viewEntry.key_findings },
+          { label: 'Limitations & Gaps', value: viewEntry.limitations },
+          { label: 'Relevance / Contribution', value: viewEntry.relevance },
+        ]
+      : [],
+  );
 
   async function loadDocs() {
     const result = await listDocuments({ page, project_id: projectId });
@@ -199,6 +219,37 @@
       exporting = false;
     }
   }
+
+  async function openView(doc: Document) {
+    if (!projectId) return;
+    viewPaper = doc;
+    viewEntry = null;
+    viewEmpty = false;
+    viewError = '';
+    viewLoading = true;
+    openMenu = null;
+    try {
+      viewEntry = await getLiteratureEntry(projectId, doc.id);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e ?? 'Could not load mapping');
+      if (/no literature mapping/i.test(message)) {
+        viewEmpty = true;
+      } else {
+        viewError = message;
+      }
+    } finally {
+      viewLoading = false;
+    }
+  }
+
+  $effect(() => {
+    if (!viewPaper) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') viewPaper = null;
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  });
 
   async function handleDelete(doc: Document) {
     const ok = confirm(`Delete "${doc.title}"? This cannot be undone.`);
@@ -415,6 +466,12 @@
                   ✎ Process metadata
                 </button>
                 <button
+                  onclick={() => openView(doc)}
+                  class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-600 hover:bg-slate-50"
+                >
+                  📖 View mapping
+                </button>
+                <button
                   onclick={() => handleBuildMapping(doc)}
                   disabled={busy !== null}
                   class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-emerald-600 hover:bg-slate-50 disabled:opacity-50"
@@ -437,3 +494,117 @@
     </div>
   {/if}
 </div>
+
+{#if viewPaper}
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+  >
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Literature mapping"
+      class="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+    >
+      <div class="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-4">
+        <div class="min-w-0">
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Literature mapping
+          </p>
+          <h3 class="mt-0.5 line-clamp-2 text-sm font-semibold text-slate-800">
+            {viewPaper.title}
+          </h3>
+          {#if viewEntry?.citation}
+            <p class="mt-1 text-xs text-slate-500">{viewEntry.citation}</p>
+          {/if}
+        </div>
+        <button
+          onclick={() => (viewPaper = null)}
+          class="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+          aria-label="Close"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto px-6 py-5">
+        {#if viewLoading}
+          <div class="flex items-center justify-center py-16 text-sm text-slate-400">
+            Loading mapping…
+          </div>
+        {:else if viewError}
+          <div class="py-10 text-center">
+            <p class="text-sm text-red-600">{viewError}</p>
+            <button
+              onclick={() => {
+                const doc = viewPaper;
+                viewPaper = null;
+                handleBuildMapping(doc);
+              }}
+              class="mt-4 rounded-lg border border-emerald-600 px-4 py-2 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50"
+            >
+              Try building the mapping
+            </button>
+          </div>
+        {:else if viewEmpty}
+          <div class="py-10 text-center">
+            <p class="text-sm text-slate-500">
+              No literature mapping yet for this paper.
+            </p>
+            <p class="mt-1 text-xs text-slate-400">
+              Use “Build mapping” to generate the entry, then come back here to view it.
+            </p>
+            <button
+              onclick={() => {
+                const doc = viewPaper;
+                viewPaper = null;
+                handleBuildMapping(doc);
+              }}
+              class="mt-4 rounded-lg border border-emerald-600 px-4 py-2 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50"
+            >
+              🗺 Build mapping
+            </button>
+          </div>
+        {:else if viewEntry}
+          <div class="space-y-5">
+            {#each entryFields as field}
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-indigo-600">
+                  {field.label}
+                </p>
+                <p class="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                  {field.value || '—'}
+                </p>
+              </div>
+            {/each}
+            {#if viewEntry.apa_reference}
+              <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  APA reference
+                </p>
+                <p class="mt-1 text-xs leading-relaxed text-slate-600">
+                  {viewEntry.apa_reference}
+                </p>
+              </div>
+            {/if}
+          </div>
+        {/if}
+      </div>
+
+      <div class="flex items-center justify-between border-t border-slate-100 px-6 py-3">
+        {#if viewEntry?.auto_generated}
+          <span class="text-[11px] italic text-slate-400">
+            Auto-generated — review for accuracy
+          </span>
+        {:else}
+          <span></span>
+        {/if}
+        <a
+          href={`/projects/${projectId}/literature`}
+          class="rounded-lg px-3 py-1.5 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50"
+        >
+          Open in Literature Map →
+        </a>
+      </div>
+    </div>
+  </div>
+{/if}

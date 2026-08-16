@@ -73,6 +73,26 @@ async def get_literature_entries(
     return service.entries(current_user["id"], project_id)
 
 
+@router.get(
+    "/projects/{project_id}/literature/entries/{paper_id}",
+    response_model=LiteratureEntry,
+)
+async def get_literature_entry(
+    project_id: str,
+    paper_id: str,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    service = LiteratureService(db)
+    entry = service.get_entry(paper_id, current_user["id"])
+    if entry is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No literature mapping yet for this paper",
+        )
+    return entry
+
+
 @router.patch("/projects/{project_id}/literature/entries/{paper_id}", response_model=LiteratureEntry)
 async def update_literature_entry(
     project_id: str,

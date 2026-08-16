@@ -34,6 +34,7 @@ def create_app() -> FastAPI:
     from app.features.literature.router import router as literature_router
     from app.features.skills.router import router as skills_router
     from app.features.projects.router import router as projects_router
+    from app.features.actions.router import router as actions_router
 
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(settings_router, prefix="/api/v1")
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(literature_router, prefix="/api/v1")
     app.include_router(skills_router, prefix="/api/v1")
     app.include_router(projects_router, prefix="/api/v1")
+    app.include_router(actions_router, prefix="/api/v1")
 
     @app.get("/health")
     async def health():

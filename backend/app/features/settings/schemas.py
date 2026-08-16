@@ -28,3 +28,4 @@ class SettingsUpdate(BaseModel):
     ollama_model: Optional[str] = None
     max_tokens: Optional[int] = None
     temperature: Optional[float] = None
+    max_concurrent_actions: Optional[int] = None

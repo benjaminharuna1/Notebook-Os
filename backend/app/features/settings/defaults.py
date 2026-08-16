@@ -56,4 +56,5 @@ def get_default_settings(device_tier: str = "medium") -> dict:
         "ollama_model": tier["ollama_model"],
         "max_tokens": tier["max_tokens"],
         "temperature": 0.7,
+        "max_concurrent_actions": 2,
     }

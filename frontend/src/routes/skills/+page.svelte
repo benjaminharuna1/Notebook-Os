@@ -5,7 +5,6 @@
   import {
     listInstalledSkills,
     listCatalog,
-    installSkill,
     setSkillEnabled,
     uninstallSkill,
     importSkill,
@@ -44,15 +43,7 @@
 
   onMount(load);
 
-  async function handleInstall(skill: CatalogSkill) {
-    try {
-      await installSkill(skill.skill.id);
-      toasts.add(`Installed "${skill.skill.name}"`, 'success');
-      await load();
-    } catch (err) {
-      toasts.add((err as Error).message, 'error');
-    }
-  }
+  const catalogIds = $derived(new Set(catalog.map((c) => c.skill.id)));
 
   async function handleToggle(item: InstalledSkill, enabled: boolean) {
     try {
@@ -176,12 +167,16 @@
                   ></span>
                   {item.enabled ? 'Active' : 'Paused'}
                 </label>
-                <button
-                  onclick={() => handleUninstall(item)}
-                  class="text-xs text-red-500 hover:text-red-700"
-                >
-                  Uninstall
-                </button>
+                {#if catalogIds.has(item.skill.id)}
+                  <span class="text-xs text-slate-400">System</span>
+                {:else}
+                  <button
+                    onclick={() => handleUninstall(item)}
+                    class="text-xs text-red-500 hover:text-red-700"
+                  >
+                    Uninstall
+                  </button>
+                {/if}
               </div>
             {/each}
           </div>
@@ -214,16 +209,7 @@
                   </div>
                 {/if}
               </div>
-              {#if entry.installed}
-                <span class="text-xs font-medium text-emerald-600">Installed</span>
-              {:else}
-                <button
-                  onclick={() => handleInstall(entry)}
-                  class="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
-                >
-                  Install
-                </button>
-              {/if}
+              <span class="text-xs font-medium text-emerald-600">Installed</span>
             </div>
           {/each}
         </div>

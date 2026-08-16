@@ -381,3 +381,158 @@ def test_ai_edge_pass_skips_pairs_already_connected():
 
     assert edges == []
     assert refs == []
+
+
+# --- LLM entry parsing robustness -------------------------------------------
+
+
+def test_parse_json_extracts_object_from_code_fence_and_prose():
+    raw = (
+        'Sure, here you go:\n```json\n'
+        '{"research_objective": "A", "key_findings": "B"}\n'
+        '```\nHope that helps!'
+    )
+    parsed = LiteratureLLMService._parse_json(raw)
+    assert parsed.get("research_objective") == "A"
+    assert parsed.get("key_findings") == "B"
+
+
+def test_parse_json_handles_json_arrays():
+    raw = json.dumps([{"a": 1, "b": 2}])
+    assert LiteratureLLMService._parse_json(raw) == [{"a": 1, "b": 2}]
+
+
+def test_parse_json_returns_empty_for_prose():
+    assert LiteratureLLMService._parse_json("This paper is great, no JSON here.") == {}
+
+
+def test_generate_entry_retries_when_first_reply_is_not_json():
+    db = _db()
+    _seed_paper(db, "p1", "proj1", "Widgets", abstract="This study examines widgets.")
+    service = LiteratureService(db)
+    llm = LiteratureLLMService(db)
+    paper = {
+        "id": "p1",
+        "title": "Widgets",
+        "authors": ["Wright, W."],
+        "year": 2021,
+        "abstract": "This study examines widgets.",
+    }
+    calls = {"n": 0}
+
+    async def fake_call(self, user_id, system, user):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return "The objective is clear and the findings matter."
+        return json.dumps(
+            {
+                "research_objective": "To examine widgets.",
+                "methodology": "A survey of widget makers.",
+                "key_findings": "Widgets correlate with output.",
+                "limitations": "Small sample.",
+                "relevance": "Informs widget research.",
+            }
+        )
+
+    with patch.object(LiteratureLLMService, "active_model", return_value={"id": "m"}), patch.object(
+        LiteratureLLMService, "_call", new=fake_call
+    ):
+        asyncio.run(llm._generate_entry(service, "u1", "proj1", paper, overwrite=False))
+
+    entry = service.get_entry("p1", "u1")
+    assert calls["n"] == 2
+    assert entry is not None
+    assert entry["research_objective"] == "To examine widgets."
+    assert entry["methodology"] == "A survey of widget makers."
+    assert entry["key_findings"] == "Widgets correlate with output."
+    assert entry["auto_generated"] is True
+
+
+def test_generate_entry_falls_back_when_llm_returns_no_fields():
+    db = _db()
+    _seed_paper(db, "p1", "proj1", "Widgets", abstract="This study examines widgets.")
+    service = LiteratureService(db)
+    llm = LiteratureLLMService(db)
+    paper = {
+        "id": "p1",
+        "title": "Widgets",
+        "authors": [],
+        "year": None,
+        "abstract": "This study examines widgets.",
+    }
+
+    async def fake_call(self, user_id, system, user):
+        return "No structured output here."
+
+    with patch.object(LiteratureLLMService, "active_model", return_value={"id": "m"}), patch.object(
+        LiteratureLLMService, "_call", new=fake_call
+    ):
+        asyncio.run(llm._generate_entry(service, "u1", "proj1", paper, overwrite=False))
+
+    entry = service.get_entry("p1", "u1")
+    assert entry is not None
+    assert "derived from abstract" in (entry["limitations"] or "")
+    assert "This study examines widgets." in (entry["research_objective"] or "")
+
+
+def test_entry_fields_returns_empty_for_array_reply():
+    raw = json.dumps([{"research_objective": "A"}])
+    assert LiteratureLLMService._entry_fields(raw) == {}
+
+
+def test_generate_entry_falls_back_when_llm_returns_array():
+    db = _db()
+    _seed_paper(db, "p1", "proj1", "Widgets", abstract="This study examines widgets.")
+    service = LiteratureService(db)
+    llm = LiteratureLLMService(db)
+    paper = {
+        "id": "p1",
+        "title": "Widgets",
+        "authors": [],
+        "year": None,
+        "abstract": "This study examines widgets.",
+    }
+
+    async def fake_call(self, user_id, system, user):
+        return json.dumps([{"research_objective": "ignored", "key_findings": "ignored"}])
+
+    with patch.object(LiteratureLLMService, "active_model", return_value={"id": "m"}), patch.object(
+        LiteratureLLMService, "_call", new=fake_call
+    ):
+        asyncio.run(llm._generate_entry(service, "u1", "proj1", paper, overwrite=False))
+
+    entry = service.get_entry("p1", "u1")
+    assert entry is not None
+    assert "derived from abstract" in (entry["limitations"] or "")
+    assert "This study examines widgets." in (entry["research_objective"] or "")
+
+
+def test_extract_paper_metadata_returns_empty_dict_for_array_reply():
+    db = _db()
+    llm = LiteratureLLMService(db)
+
+    async def fake_call(self, user_id, system, user):
+        return json.dumps([{"title": "ignored"}])
+
+    with patch.object(LiteratureLLMService, "active_model", return_value={"id": "m"}), patch.object(
+        LiteratureLLMService, "_call", new=fake_call
+    ):
+        fields = llm.extract_paper_metadata("u1", "The first page of text", "widgets.pdf")
+
+    assert fields == {}
+
+
+def test_extract_paper_metadata_parses_object_reply():
+    db = _db()
+    llm = LiteratureLLMService(db)
+
+    async def fake_call(self, user_id, system, user):
+        return json.dumps({"title": "Widgets", "authors": ["Wright, W."], "year": 2021})
+
+    with patch.object(LiteratureLLMService, "active_model", return_value={"id": "m"}), patch.object(
+        LiteratureLLMService, "_call", new=fake_call
+    ):
+        fields = llm.extract_paper_metadata("u1", "The first page of text", "widgets.pdf")
+
+    assert fields["title"] == "Widgets"
+    assert fields["year"] == 2021

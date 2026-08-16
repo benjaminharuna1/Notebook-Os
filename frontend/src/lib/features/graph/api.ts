@@ -33,10 +33,6 @@ export async function startGraphGeneration(projectId: string): Promise<Generatio
   });
 }
 
-export async function getGenerationJob(jobId: string): Promise<GenerationJob> {
-  return api.get<GenerationJob>(`/graph/generate/${jobId}`);
-}
-
 export async function listGraphHistory(projectId: string): Promise<GraphCheckpoint[]> {
   const params = new URLSearchParams({ project_id: projectId });
   return api

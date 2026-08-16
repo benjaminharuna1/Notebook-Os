@@ -221,24 +221,17 @@ def test_summarize_paper_raises_without_model():
 
 
 def test_start_build_sets_rebuild_pending_for_running_job():
-    jobs._jobs["fake"] = {
-        "id": "fake",
-        "user_id": "u1",
-        "project_id": "proj1",
-        "status": "running",
-        "progress": 50,
-        "stage": "Enriching metadata",
-        "error": None,
-    }
+    from app.features.actions import registry as actions
+
+    existing = actions.register("u1", "proj1", jobs.KIND, "Literature map")
+    actions.update(existing, status="running")
     try:
         job_id = jobs.start_build(lambda: object(), "u1", "proj1")
-        assert job_id == "fake"
-        with jobs._jobs_lock:
-            assert jobs._jobs["fake"]["rebuild_pending"] is True
-        assert "rebuild_pending" not in jobs.get_job("fake")
+        assert job_id == existing
+        assert actions.pop_rebuild_pending(existing) is True
+        assert "rebuild_pending" not in jobs.get_job(existing)
     finally:
-        with jobs._jobs_lock:
-            jobs._jobs.pop("fake", None)
+        actions.update(existing, status="done")
 
 
 # --- editable metadata ------------------------------------------------------

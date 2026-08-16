@@ -69,17 +69,6 @@ async def start_generation(
     return jobs.get_job(job_id)
 
 
-@router.get("/graph/generate/{job_id}", response_model=GenerationJob)
-async def get_generation_status(
-    job_id: str,
-    current_user: dict = Depends(get_current_user),
-):
-    job = jobs.get_job(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Generation job not found")
-    return job
-
-
 @router.get("/graph/history", response_model=GraphCheckpointList)
 async def list_graph_history(
     project_id: str = Query(...),

@@ -9,7 +9,6 @@
     applyPaperCandidate,
     exportLiteratureMap,
     getLiteratureEntries,
-    getLiteratureJob,
     getLiteratureMap,
     getPaperMetadata,
     regenerateLiteratureEntry,
@@ -19,6 +18,12 @@
     updatePaperMetadata,
   } from '$lib/features/literature/api';
   import type { LiteratureMetadata, MetadataCandidate } from '$lib/features/literature/api';
+  import {
+    actions as actionList,
+    pauseAction,
+    refreshActions,
+    resumeAction,
+  } from '$lib/features/actions/store';
 
   const projectId = $derived($page.params.id);
 
@@ -27,17 +32,18 @@
   let error = $state('');
   let loading = $state(false);
   let exporting = $state(false);
-  let building = $state<{
-    id: string;
-    status: string;
-    progress: number;
-    stage?: string;
-    error?: string;
-  } | null>(null);
+  const building = $derived(
+    ($actionList ?? []).find(
+      (a) =>
+        a.kind === 'literature' &&
+        a.project_id === projectId &&
+        (a.status === 'queued' || a.status === 'running' || a.status === 'paused')
+    ) ?? null
+  );
+  let handledBuilds = $state<string[]>([]);
   let view = $state<'map' | 'table'>('map');
   let edgeType = $state<'all' | 'citation' | 'similarity'>('all');
   let clusterFilter = $state<string | null>(null);
-  let buildToken = 0;
 
   let searchQ = $state('');
   let searchResults = $state<SearchResult[]>([]);
@@ -89,7 +95,7 @@
 
   $effect(() => {
     if (!projectId) return;
-    buildToken++;
+    handledBuilds = [];
     map = { nodes: [], edges: [], clusters: [] };
     entries = [];
     drafts = {};
@@ -141,40 +147,40 @@
     };
   }
 
+  $effect(() => {
+    if (!projectId) return;
+    for (const a of $actionList ?? []) {
+      if (a.kind !== 'literature' || a.project_id !== projectId) continue;
+      if (a.status !== 'done' && a.status !== 'error') continue;
+      if (handledBuilds.includes(a.id)) continue;
+      handledBuilds = [...handledBuilds, a.id];
+      if (a.status === 'done') {
+        void loadMap();
+        void loadEntries();
+      } else {
+        error = a.error ?? 'Literature map build failed';
+      }
+    }
+  });
+
   async function build() {
     if (!projectId || building?.status === 'running') return;
-    const token = ++buildToken;
     try {
-      const job = await startLiteratureBuild(projectId);
-      if (token !== buildToken) return;
-      building = job;
-      await pollJob(job.id, token);
+      await startLiteratureBuild(projectId);
+      await refreshActions();
     } catch (e) {
-      if (token !== buildToken) return;
       error = e instanceof Error ? e.message : String(e ?? 'Unknown error');
-      building = null;
     }
   }
 
-  async function pollJob(jobId: string, token: number) {
-    while (true) {
-      await new Promise((r) => setTimeout(r, 400));
-      if (token !== buildToken) return;
-      const job = await getLiteratureJob(projectId, jobId);
-      if (token !== buildToken) return;
-      building = job;
-      if (job.status === 'done') {
-        await loadMap();
-        await loadEntries();
-        if (token !== buildToken) return;
-        building = null;
-        return;
-      }
-      if (job.status === 'error') {
-        error = job.error ?? 'Literature map build failed';
-        building = null;
-        return;
-      }
+  async function toggleBuildPause() {
+    if (!building) return;
+    try {
+      if (building.status === 'paused') await resumeAction(building.id);
+      else await pauseAction(building.id);
+      await refreshActions();
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e ?? 'Could not pause the build');
     }
   }
 
@@ -732,9 +738,9 @@
       </div>
     {/if}
 
-    {#if building?.status === 'running'}
+    {#if building}
       <div class="absolute inset-4 z-40 flex flex-col items-center justify-center gap-3 rounded-2xl bg-[#0b1120]/85 text-sm text-slate-200 backdrop-blur-sm">
-        <p>Building literature map…</p>
+        <p>{building.status === 'paused' ? 'Literature map build paused' : 'Building literature map…'}</p>
         <div class="h-2 w-64 overflow-hidden rounded-full bg-white/10">
           <div
             class="h-full rounded-full bg-indigo-400 transition-all duration-300"
@@ -742,8 +748,14 @@
           ></div>
         </div>
         <p class="text-xs text-slate-400">
-          {building.progress ?? 0}% · {building.stage ?? 'Working'}
+          {Math.round(building.progress ?? 0)}% · {building.stage ?? 'Working'}
         </p>
+        <button
+          onclick={toggleBuildPause}
+          class="rounded-lg border border-white/20 px-4 py-1.5 text-xs font-medium text-slate-100 hover:bg-white/10"
+        >
+          {building.status === 'paused' ? '▶ Continue' : '⏸ Pause'}
+        </button>
       </div>
     {/if}
   </div>

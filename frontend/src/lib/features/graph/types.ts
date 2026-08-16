@@ -92,7 +92,7 @@ export interface GraphCheckpointDetail extends GraphCheckpoint {
 
 export interface GenerationJob {
   id: string;
-  status: 'running' | 'done' | 'error';
+  status: 'queued' | 'running' | 'paused' | 'done' | 'error';
   progress: number;
   stage?: string;
   checkpoint?: GraphCheckpoint;
