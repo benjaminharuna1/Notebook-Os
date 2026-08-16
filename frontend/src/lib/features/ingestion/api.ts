@@ -37,3 +37,12 @@ export async function resumeIngestion(documentId: string): Promise<{ status: str
 export async function reprocessIngestion(documentId: string): Promise<{ status: string }> {
   return api.post<{ status: string }>(`/ingest/${documentId}/reprocess`, {});
 }
+
+export async function reprocessDocuments(
+  ids: string[],
+): Promise<{ success: boolean; processed: number; errors: { document_id: string; error: string }[] }> {
+  return api.post<{ success: boolean; processed: number; errors: { document_id: string; error: string }[] }>(
+    '/ingest/reprocess',
+    { document_ids: ids },
+  );
+}

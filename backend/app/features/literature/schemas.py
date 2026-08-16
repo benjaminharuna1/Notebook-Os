@@ -81,3 +81,7 @@ class LiteratureMetadataUpdate(BaseModel):
 
 class LiteratureCandidateApply(BaseModel):
     index: int
+
+
+class LiteratureRegenerateRequest(BaseModel):
+    paper_ids: Optional[List[str]] = None

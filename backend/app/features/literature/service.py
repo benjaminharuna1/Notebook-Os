@@ -322,6 +322,46 @@ class LiteratureService:
             )
         return len(papers)
 
+    def regenerate_metadata(
+        self, user_id: str, project_id: str, paper_ids: Optional[List[str]] = None
+    ) -> List[dict]:
+        """Re-runs enrichment (DOI/title/AI lookup) for selected papers, or all
+        papers when ``paper_ids`` is None, and refreshes their literature
+        entries' citation/APA. Returns a per-paper result summary.
+
+        User-edited papers are skipped by ``enrich`` itself; everything here is
+        best-effort and never raises per paper.
+        """
+        papers = self.papers(user_id, project_id)
+        if paper_ids:
+            selected = {pid for pid in paper_ids}
+            papers = [p for p in papers if p["id"] in selected]
+        results = []
+        for paper in papers:
+            try:
+                self.enrich(paper, user_id=user_id)
+                self.save_enrichment(paper)
+                self.upsert_entry(
+                    paper["id"],
+                    user_id,
+                    project_id,
+                    {
+                        "citation": self.auto_citation(paper),
+                        "apa_reference": paper.get("apa_reference")
+                        or self.apa_reference(paper),
+                    },
+                    auto=True,
+                )
+                results.append(
+                    {
+                        "paper_id": paper["id"],
+                        "status": paper.get("verification_status"),
+                    }
+                )
+            except Exception:
+                results.append({"paper_id": paper["id"], "status": "error"})
+        return results
+
     # --- editable paper metadata --------------------------------------------
 
     def get_metadata(self, paper_id: str, user_id: str, project_id: str) -> Optional[dict]:
@@ -553,6 +593,51 @@ class LiteratureService:
 
         buffer = BytesIO()
         workbook.save(buffer)
+        return buffer.getvalue()
+
+    def export_references_docx(self, user_id: str, project_id: str, project_name: str) -> bytes:
+        """Builds a Word document of APA references for every paper.
+
+        Layout: the project name as the document title, a ``References``
+        sub-heading, then each reference as a hanging-indent numbered paragraph,
+        sorted alphabetically and de-duplicated.
+        """
+        from io import BytesIO
+
+        from docx import Document
+        from docx.shared import Pt
+
+        papers = self.papers(user_id, project_id)
+        entries = {e["paper_id"]: e for e in self.entries(user_id, project_id)}
+        refs = []
+        for paper in papers:
+            entry = entries.get(paper["id"]) or {}
+            ref = (
+                (entry.get("apa_reference") or "").strip()
+                or (paper.get("apa_reference") or "").strip()
+                or self.apa_reference(paper)
+            )
+            if ref:
+                refs.append(ref)
+        refs = sorted({ref for ref in refs if ref})
+
+        document = Document()
+        document.add_heading(project_name or "References", level=0)
+        document.add_heading("References", level=1)
+        if not refs:
+            document.add_paragraph("No papers with references yet.")
+        for ref in refs:
+            paragraph = document.add_paragraph(ref)
+            try:
+                paragraph.style = document.styles["List Number"]
+            except KeyError:
+                pass
+            paragraph.paragraph_format.left_indent = Pt(36)
+            paragraph.paragraph_format.first_line_indent = Pt(-36)
+            paragraph.paragraph_format.space_after = Pt(6)
+
+        buffer = BytesIO()
+        document.save(buffer)
         return buffer.getvalue()
 
     # --- Crossref enrichment ------------------------------------------------

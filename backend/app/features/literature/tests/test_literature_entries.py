@@ -158,9 +158,14 @@ def test_export_workbook_structure():
 # --- LLM entry generation ---------------------------------------------------
 
 
-def test_summarize_papers_is_noop_without_model():
+def test_summarize_papers_fills_entry_via_fallback_without_model():
     db = _db()
     _seed_paper(db, "p1", "proj1", "Deep Learning Survey")
+    db.execute(
+        "UPDATE documents SET abstract = ? WHERE id = 'p1'",
+        ("We introduce a transformer architecture.",),
+    )
+    db.commit()
     _seed_chunk(db, "c1", "p1", "We introduce a transformer architecture.", index=0, page=1)
     service = LiteratureService(db)
     service.ensure_entries("u1", "proj1")
@@ -168,7 +173,9 @@ def test_summarize_papers_is_noop_without_model():
 
     with patch.object(LiteratureLLMService, "active_model", return_value=None):
         assert llm.summarize_papers("u1", "proj1") == 1
-    assert service.get_entry("p1", "u1")["research_objective"] is None
+    entry = service.get_entry("p1", "u1")
+    assert "transformer architecture" in entry["research_objective"].lower()
+    assert "LLM unavailable" in entry["limitations"]
 
 
 def test_summarize_paper_regenerates_with_llm_output():
@@ -366,3 +373,78 @@ def test_delete_removes_literature_data_for_the_paper():
     assert len(chunks) == 0
     docs = db.execute("SELECT id FROM documents").fetchall()
     assert [d["id"] for d in docs] == ["p2"]
+
+
+# --- LLM-unavailable fallback ------------------------------------------------
+
+
+def test_summarize_papers_fills_entry_from_abstract_when_llm_down():
+    db = _db()
+    _seed_paper(db, "p1", "proj1", "Farm Budgets", authors=["Kibirige, D."], year=2014)
+    db.execute(
+        """UPDATE documents SET abstract = ? WHERE id = 'p1'""",
+        (
+            "This study estimates the budgets of small-scale farms in the Eastern Cape. "
+            "A survey of 120 households was conducted. Results show higher margins "
+            "for commercial farms.",
+        ),
+    )
+    db.execute(
+        "INSERT INTO model_configs (id, user_id, name, provider, model_id, is_active) "
+        "VALUES ('m1', 'u1', 'llama', 'ollama', 'llama', 1)"
+    )
+    db.commit()
+
+    service = LiteratureService(db)
+    service.ensure_entries("u1", "proj1")
+    llm = LiteratureLLMService(db)
+
+    with patch.object(llm, "_call", side_effect=RuntimeError("model down")):
+        llm.summarize_papers("u1", "proj1")
+
+    entry = service.get_entry("p1", "u1")
+    assert "Eastern Cape" in entry["research_objective"]
+    assert "survey" in entry["methodology"].lower()
+    assert "margins" in entry["key_findings"].lower()
+    assert "LLM unavailable" in entry["limitations"]
+    assert entry["auto_generated"] is True
+
+
+def test_summarize_papers_replaces_fallback_when_llm_returns():
+    db = _db()
+    _seed_paper(db, "p1", "proj1", "Deep Learning Survey", authors=["Smith, J."], year=2021)
+    db.execute(
+        "UPDATE documents SET abstract = ? WHERE id = 'p1'",
+        ("An approach for improving deep learning accuracy.",),
+    )
+    db.execute(
+        "INSERT INTO model_configs (id, user_id, name, provider, model_id, is_active) "
+        "VALUES ('m1', 'u1', 'llama', 'ollama', 'llama', 1)"
+    )
+    db.commit()
+
+    service = LiteratureService(db)
+    service.ensure_entries("u1", "proj1")
+    llm = LiteratureLLMService(db)
+
+    with patch.object(llm, "_call", side_effect=RuntimeError("model down")):
+        llm.summarize_papers("u1", "proj1")
+    entry = service.get_entry("p1", "u1")
+    assert "LLM unavailable" in entry["limitations"]
+
+    good = json.dumps(
+        {
+            "research_objective": "Objective A",
+            "methodology": "Method B",
+            "key_findings": "Findings C",
+            "limitations": "Limits D",
+            "relevance": "Relevance E",
+        }
+    )
+    with patch.object(llm, "_call", return_value=good):
+        llm.summarize_papers("u1", "proj1")
+
+    entry = service.get_entry("p1", "u1")
+    assert entry["research_objective"] == "Objective A"
+    assert entry["methodology"] == "Method B"
+    assert "LLM unavailable" not in entry["limitations"]

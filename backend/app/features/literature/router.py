@@ -17,6 +17,7 @@ from app.features.literature.schemas import (
     LiteratureEntryUpdate,
     LiteratureMapResponse,
     LiteratureMetadataUpdate,
+    LiteratureRegenerateRequest,
 )
 from app.features.literature.service import LiteratureService
 
@@ -160,6 +161,20 @@ async def apply_literature_candidate(
     return metadata
 
 
+@router.post("/projects/{project_id}/literature/regenerate")
+async def regenerate_literature_metadata(
+    project_id: str,
+    req: LiteratureRegenerateRequest,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    service = LiteratureService(db)
+    results = service.regenerate_metadata(
+        current_user["id"], project_id, req.paper_ids
+    )
+    return {"processed": len(results), "results": results}
+
+
 @router.get("/projects/{project_id}/literature/export")
 async def export_literature_map(
     project_id: str,
@@ -179,6 +194,32 @@ async def export_literature_map(
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/projects/{project_id}/literature/references/export.docx")
+async def export_literature_references(
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    row = db.execute(
+        "SELECT name FROM projects WHERE id = ? AND user_id = ?",
+        (project_id, current_user["id"]),
+    ).fetchone()
+    project_name = (row["name"] if row else "project") or "project"
+
+    service = LiteratureService(db)
+    data = service.export_references_docx(current_user["id"], project_id, project_name)
+
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "-", project_name).strip("-").lower() or "project"
+    filename = f"{slug}-references.docx"
+    return Response(
+        content=data,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ),
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

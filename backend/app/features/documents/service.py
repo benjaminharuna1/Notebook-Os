@@ -87,6 +87,41 @@ class DocumentService:
             self._rebuild_literature(user_id, project_id)
         return {"success": True}
 
+    def delete_documents(
+        self,
+        document_ids: list[str],
+        user_id: str,
+        project_id: str,
+        collection_name: str = "documents",
+    ):
+        """Deletes several documents belonging to a project in one pass.
+
+        Only documents owned by ``user_id`` inside ``project_id`` are touched;
+        unknown/foreign ids are ignored. Chroma vectors are purged per document
+        and the literature map is rebuilt once at the end.
+        """
+        if not document_ids:
+            return {"success": True, "deleted": 0}
+
+        rows = self.repo.db.execute(
+            """SELECT id FROM documents
+               WHERE user_id = ? AND project_id = ? AND id IN (%s)"""
+            % ",".join("?" * len(document_ids)),
+            (user_id, project_id, *document_ids),
+        ).fetchall()
+        owned = [row["id"] for row in rows]
+        if not owned:
+            return {"success": True, "deleted": 0}
+
+        chroma = self.repo.get_chroma()
+        collection = chroma.get_or_create_collection(name=collection_name)
+        for document_id in owned:
+            self.repo.delete(document_id, user_id)
+            collection.delete(where={"document_id": document_id, "user_id": user_id})
+
+        self._rebuild_literature(user_id, project_id)
+        return {"success": True, "deleted": len(owned)}
+
     @staticmethod
     def _rebuild_literature(user_id: str, project_id: str) -> None:
         """Rebuilds the project's literature map after a paper is removed so

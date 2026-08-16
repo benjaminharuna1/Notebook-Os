@@ -101,6 +101,11 @@ def _run(job_id: str, service_factory: Callable[[], object], user_id: str, proje
         if response.nodes:
             _update(job_id, progress=84, stage="Summarizing papers")
             llm = LiteratureLLMService(service.db)
+            if not llm.active_model(user_id):
+                _update(
+                    job_id,
+                    stage="Summarizing papers (LLM unavailable — using abstracts)",
+                )
             llm.summarize_papers(
                 user_id,
                 project_id,

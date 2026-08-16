@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse
 
 from app.core.dependencies import get_current_user, get_db
+from app.features.documents.schemas import DocumentBatchDelete
 from app.features.documents.service import DocumentService
 from app.features.embedding.service import resolve_collection_name
 from app.features.settings.service import SettingsService
@@ -51,6 +52,25 @@ async def delete_document(
     collection_name = resolve_collection_name(user_settings)
     service = DocumentService(db)
     return service.delete_document(document_id, current_user["id"], collection_name=collection_name)
+
+
+@router.post("/projects/{project_id}/documents/batch/delete")
+async def delete_documents_batch(
+    project_id: str,
+    req: DocumentBatchDelete,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    settings_service = SettingsService(db)
+    user_settings = settings_service.get_settings(current_user["id"]).settings
+    collection_name = resolve_collection_name(user_settings)
+    service = DocumentService(db)
+    return service.delete_documents(
+        req.document_ids,
+        current_user["id"],
+        project_id,
+        collection_name=collection_name,
+    )
 
 
 @router.get("/projects/{project_id}/documents/{document_id}/file")

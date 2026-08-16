@@ -9,6 +9,20 @@ ENTRY_KEYS = ("research_objective", "methodology", "key_findings", "limitations"
 MAX_PAPER_CHUNKS = 8
 CHUNK_CHAR_CAP = 1800
 
+_FALLBACK_MARK = "LLM unavailable — derived from abstract."
+_METHOD_HINTS = (
+    "used",
+    "survey",
+    "model",
+    "data",
+    "sample",
+    "method",
+    "approach",
+    "analysis",
+    "design",
+    "interview",
+)
+
 METADATA_SYSTEM_PROMPT = (
     "You extract bibliographic metadata from the first page of a research paper. "
     "The page shows the journal name, author name(s), the paper's own title, the "
@@ -231,8 +245,10 @@ class LiteratureLLMService:
         paper: dict,
         overwrite: bool,
     ) -> None:
-        """Runs one LLM entry pass. In auto mode failures are silent (the build
-        must not abort); in overwrite mode (explicit regenerate) failures raise."""
+        """Runs one LLM entry pass. In auto mode failures fall back to a
+        metadata-derived entry (so the review table is never empty) and never
+        abort the build; in overwrite mode (explicit regenerate) failures
+        raise so the UI can surface the reason."""
         try:
             model = self.active_model(user_id)
             if not model:
@@ -243,6 +259,14 @@ class LiteratureLLMService:
         except Exception:
             if overwrite:
                 raise
+            service.upsert_entry(
+                paper["id"],
+                user_id,
+                project_id,
+                self._fallback_entry(paper),
+                auto=True,
+                auto_generated=True,
+            )
             return
         fields = {key: (parsed.get(key) or "").strip() for key in ENTRY_KEYS}
         if overwrite:
@@ -251,7 +275,49 @@ class LiteratureLLMService:
                 paper["id"], user_id, project_id, merged, auto=False, auto_generated=True
             )
         else:
-            service.upsert_entry(paper["id"], user_id, project_id, fields, auto=True)
+            existing = service.get_entry(paper["id"], user_id)
+            overwrite_fields = (
+                set(ENTRY_KEYS) if existing and self._is_fallback_entry(existing) else set()
+            )
+            service.upsert_entry(
+                paper["id"],
+                user_id,
+                project_id,
+                fields,
+                auto=True,
+                auto_generated=True,
+                overwrite=overwrite_fields,
+            )
+
+    @staticmethod
+    def _fallback_entry(paper: dict) -> dict:
+        """Fills the five review fields from the paper's own title/abstract when
+        no LLM is available. Content is always grounded in the paper's text and
+        carries a marker so a later LLM pass replaces it."""
+        title = (paper.get("title") or "Untitled").strip()
+        abstract = (paper.get("abstract") or "").strip()
+        sentences = [
+            s.strip()
+            for s in re.split(r"(?<=[.!?])\s+|[\r\n]+", abstract)
+            if s.strip()
+        ]
+        objective = sentences[0] if sentences else f"This paper examines {title}."
+        methodology = next(
+            (s for s in sentences if any(hint in s.lower() for hint in _METHOD_HINTS)),
+            "Not stated in the abstract.",
+        )
+        findings = " ".join(sentences[1:]) or (abstract or "No findings available from the abstract.")
+        return {
+            "research_objective": objective[:2000],
+            "methodology": methodology[:2000],
+            "key_findings": findings[:2000],
+            "limitations": f"{_FALLBACK_MARK} Full-text analysis requires the LLM.",
+            "relevance": "Contributes to the project literature review.",
+        }
+
+    @staticmethod
+    def _is_fallback_entry(entry: dict) -> bool:
+        return any(_FALLBACK_MARK in (entry.get(key) or "") for key in ENTRY_KEYS)
 
     def _summarize_paper_sync(self, service, user_id: str, project_id: str, paper: dict, overwrite: bool) -> None:
         asyncio.run(self._generate_entry(service, user_id, project_id, paper, overwrite))
@@ -279,7 +345,8 @@ class LiteratureLLMService:
                 filled = bool(entry) and any(
                     (entry.get(key) or "").strip() for key in ENTRY_KEYS
                 )
-                if not filled:
+                is_fallback = bool(entry) and self._is_fallback_entry(entry)
+                if not filled or is_fallback:
                     self._summarize_paper_sync(service, user_id, project_id, paper, overwrite=False)
             except Exception:
                 pass

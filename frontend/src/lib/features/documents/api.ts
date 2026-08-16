@@ -24,3 +24,13 @@ export async function getDocument(id: string): Promise<Document> {
 export async function deleteDocument(id: string): Promise<{ success: boolean }> {
   return api.delete<{ success: boolean }>(`/documents/${id}`);
 }
+
+export async function deleteDocuments(
+  projectId: string,
+  ids: string[],
+): Promise<{ success: boolean; deleted: number }> {
+  return api.post<{ success: boolean; deleted: number }>(
+    `/projects/${projectId}/documents/batch/delete`,
+    { document_ids: ids },
+  );
+}

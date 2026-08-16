@@ -1,5 +1,9 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import List, Optional
+
+
+class IngestionBatchReprocess(BaseModel):
+    document_ids: List[str]
 
 
 class IngestionResponse(BaseModel):

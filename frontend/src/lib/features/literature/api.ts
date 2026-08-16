@@ -157,6 +157,48 @@ export async function exportLiteratureMap(projectId: string): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+export interface LiteratureRegenerateResult {
+  paper_id: string;
+  status: string | null;
+}
+
+export async function regenerateLiteratureMetadata(
+  projectId: string,
+  paperIds?: string[],
+): Promise<{ processed: number; results: LiteratureRegenerateResult[] }> {
+  return api.post<{ processed: number; results: LiteratureRegenerateResult[] }>(
+    `/projects/${projectId}/literature/regenerate`,
+    { paper_ids: paperIds ?? null },
+  );
+}
+
+export async function exportReferencesDocx(projectId: string): Promise<void> {
+  const authToken = get(token);
+  const response = await fetch(
+    `${BASE_URL}/projects/${projectId}/literature/references/export.docx`,
+    {
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      credentials: 'include',
+    },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(err.detail || `Export failed: ${response.status}`);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const match = disposition.match(/filename="?([^";]+)"?/);
+  const filename = match?.[1] ?? 'references.docx';
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function streamClusterSummary(
   projectId: string,
   clusterId: string,

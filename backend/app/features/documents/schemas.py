@@ -3,6 +3,10 @@ from typing import Optional, List
 from datetime import datetime
 
 
+class DocumentBatchDelete(BaseModel):
+    document_ids: List[str]
+
+
 class Document(BaseModel):
     id: str
     title: str
