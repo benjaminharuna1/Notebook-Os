@@ -9,6 +9,19 @@ ENTRY_KEYS = ("research_objective", "methodology", "key_findings", "limitations"
 MAX_PAPER_CHUNKS = 8
 CHUNK_CHAR_CAP = 1800
 
+METADATA_SYSTEM_PROMPT = (
+    "You extract bibliographic metadata from the first page of a research paper. "
+    "The page shows the journal name, author name(s), the paper's own title, the "
+    "publication year, a link/DOI and often an ISSN. Reply with STRICT JSON only, "
+    'using exactly these keys: "title" (string), "authors" (array of strings in '
+    '"Family, Given" format), "year" (integer or null), "doi" (string like '
+    '"10.1000/xyz" or null), "journal" (string or null), "issn" (string or null). '
+    '"title" must be the paper title, NOT the journal name. If a field cannot be '
+    "determined use null or an empty array."
+)
+
+MAX_METADATA_TEXT_CHARS = 2500
+
 
 class LiteratureLLMService:
     """LLM layer over the literature map.
@@ -52,6 +65,30 @@ class LiteratureLLMService:
         ):
             parts.append(chunk)
         return "".join(parts)
+
+    # --- paper metadata extraction (second layer for enrichment) -------------
+
+    def extract_paper_metadata(self, user_id: str, first_page: str, filename: str = "") -> dict:
+        """Asks the configured LLM to pull title/authors/year/DOI/journal/ISSN
+        off a paper's first page. Best-effort: returns ``{}`` when no model is
+        configured or the call fails, so enrichment always degrades gracefully.
+        """
+        first_page = (first_page or "").strip()
+        if not first_page:
+            return {}
+        try:
+            model = self.active_model(user_id)
+            if not model:
+                return {}
+            prompt = (
+                f"Filename: {filename or 'unknown'}\n\n"
+                f"First page text:\n{first_page[:MAX_METADATA_TEXT_CHARS]}\n\n"
+                "Return only the JSON object."
+            )
+            raw = asyncio.run(self._call(user_id, METADATA_SYSTEM_PROMPT, prompt))
+            return self._parse_json(raw)
+        except Exception:
+            return {}
 
     # --- cluster labeling ----------------------------------------------------
 

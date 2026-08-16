@@ -94,10 +94,11 @@ def test_enrichment_falls_back_when_crossref_unreachable():
     service = LiteratureService(db)
     paper = service.papers("u1", "proj1")[0]
 
-    with patch("app.features.literature.service.requests.get", side_effect=Exception("offline")):
+    with patch("app.features.literature.metadata.requests.get", side_effect=Exception("offline")):
         paper = service.enrich(paper)
 
-    assert paper["verification_status"] is None
+    assert paper["verification_status"] == "unverified"
+    assert paper["metadata_candidates"] == []
     service.save_enrichment(paper)
     saved = service.papers("u1", "proj1")[0]
     assert "A Survey of Quantum Machine Learning Methods (n.d.)." in saved["apa_reference"]
@@ -131,7 +132,7 @@ def test_enrichment_marks_verified_with_doi_authors_and_apa():
     service = LiteratureService(db)
     paper = service.papers("u1", "proj1")[0]
 
-    with patch("app.features.literature.service.requests.get", return_value=_Resp()):
+    with patch("app.features.literature.metadata.requests.get", return_value=_Resp()):
         paper = service.enrich(paper)
 
     assert paper["verification_status"] == "verified"
@@ -196,7 +197,7 @@ def test_build_map_produces_nodes_edges_clusters_and_layout():
     service = LiteratureService(db)
 
     with patch("app.features.literature.service.resolve_embedding_provider", return_value=_FakeEmbedder()), patch(
-        "app.features.literature.service.requests.get", return_value=_EmptyResp()
+        "app.features.literature.metadata.requests.get", return_value=_EmptyResp()
     ):
         response = service.build_map("u1", "proj1")
 
@@ -230,7 +231,7 @@ def test_cluster_sources_scoped_to_cluster_papers():
     service = LiteratureService(db)
 
     with patch("app.features.literature.service.resolve_embedding_provider", return_value=_FakeEmbedder()), patch(
-        "app.features.literature.service.requests.get", return_value=_EmptyResp()
+        "app.features.literature.metadata.requests.get", return_value=_EmptyResp()
     ):
         response = service.build_map("u1", "proj1")
     service.save_checkpoint("u1", "proj1", response, "fp")
@@ -266,7 +267,7 @@ def test_build_job_end_to_end_persists_checkpoint():
             return [{"id": c["id"], "label": f"L{c['id']}", "summary": "summary"} for c in clusters]
 
         with patch("app.features.literature.service.resolve_embedding_provider", return_value=_FakeEmbedder()), patch(
-            "app.features.literature.service.requests.get", return_value=_EmptyResp()
+            "app.features.literature.metadata.requests.get", return_value=_EmptyResp()
         ), patch.object(LiteratureLLMService, "label_clusters", new=fake_label):
             job_id = jobs.start_build(factory, "u1", "proj1")
             job = jobs.wait_for_job(job_id, timeout=20.0)

@@ -64,7 +64,10 @@ def init_sqlite_db():
             created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
             indexed_at  DATETIME,
             status      TEXT DEFAULT 'pending',
-            error       TEXT
+            error       TEXT,
+            metadata_user_edited INTEGER DEFAULT 0,
+            extracted_doi TEXT,
+            metadata_candidates TEXT
         );
 
         CREATE TABLE IF NOT EXISTS chunks (
@@ -178,6 +181,8 @@ def init_sqlite_db():
         ("ALTER TABLE documents ADD COLUMN apa_reference TEXT", None),
         ("ALTER TABLE documents ADD COLUMN authors TEXT", None),
         ("ALTER TABLE documents ADD COLUMN metadata_user_edited INTEGER DEFAULT 0", None),
+        ("ALTER TABLE documents ADD COLUMN extracted_doi TEXT", None),
+        ("ALTER TABLE documents ADD COLUMN metadata_candidates TEXT", None),
         ("ALTER TABLE graph_history ADD COLUMN map_type TEXT DEFAULT 'concepts'", None),
         ("ALTER TABLE literature_entries ADD COLUMN user_edited TEXT", None),
     ]

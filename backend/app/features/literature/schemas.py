@@ -77,3 +77,7 @@ class LiteratureMetadataUpdate(BaseModel):
     year: Optional[int] = None
     doi: Optional[str] = None
     abstract: Optional[str] = None
+
+
+class LiteratureCandidateApply(BaseModel):
+    index: int

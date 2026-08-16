@@ -66,6 +66,17 @@ export async function searchPapers(projectId: string, query: string): Promise<Se
   });
 }
 
+export interface MetadataCandidate {
+  source?: string | null;
+  doi?: string | null;
+  title?: string | null;
+  authors?: string[];
+  year?: number | null;
+  abstract?: string | null;
+  container_title?: string | null;
+  confidence?: number | null;
+}
+
 export interface LiteratureMetadata {
   title: string;
   authors: string[];
@@ -75,6 +86,8 @@ export interface LiteratureMetadata {
   apa_reference?: string | null;
   verification_status?: string | null;
   metadata_user_edited?: boolean;
+  extracted_doi?: string | null;
+  candidates?: MetadataCandidate[];
 }
 
 export async function getPaperMetadata(
@@ -92,6 +105,17 @@ export async function updatePaperMetadata(
   return api.patch<LiteratureMetadata>(
     `/projects/${projectId}/literature/entries/${paperId}/metadata`,
     fields,
+  );
+}
+
+export async function applyPaperCandidate(
+  projectId: string,
+  paperId: string,
+  index: number,
+): Promise<LiteratureMetadata> {
+  return api.post<LiteratureMetadata>(
+    `/projects/${projectId}/literature/entries/${paperId}/candidates/apply`,
+    { index },
   );
 }
 

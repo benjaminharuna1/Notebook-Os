@@ -1,13 +1,20 @@
 import json
 import math
 import re
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-import requests
 from rapidfuzz import fuzz
 
 from app.features.embedding.providers.factory import resolve_embedding_provider
 from app.features.graph.builder import layout_nodes
+from app.features.literature import metadata as metadata_sources
+from app.features.literature.metadata import (
+    MAX_CANDIDATES,
+    extract_doi,
+    extract_year,
+    heuristic_title,
+)
 from app.features.literature.schemas import ClusterInfo, LiteratureMapResponse, PaperEdge, PaperNode
 from app.features.settings.service import SettingsService
 from app.shared.id_utils import generate_id
@@ -15,8 +22,7 @@ from app.shared.id_utils import generate_id
 SIMILARITY_THRESHOLD = 0.5
 SIMILARITY_TOP_K = 5
 CITATION_THRESHOLD = 85
-CROSSREF_TIMEOUT = 8.0
-CROSSREF_MAILTO = "notebook-os@localhost"
+VERIFIED_TITLE_THRESHOLD = 90
 MAX_REFERENCE_LINES = 200
 
 _CREATE_REFERENCES_TABLE = """
@@ -93,6 +99,14 @@ class LiteratureService:
             )
         except Exception:
             pass
+        try:
+            cur.execute("ALTER TABLE documents ADD COLUMN extracted_doi TEXT")
+        except Exception:
+            pass
+        try:
+            cur.execute("ALTER TABLE documents ADD COLUMN metadata_candidates TEXT")
+        except Exception:
+            pass
         self.db.commit()
 
     # --- papers -------------------------------------------------------------
@@ -100,7 +114,7 @@ class LiteratureService:
     def papers(self, user_id: str, project_id: str) -> List[dict]:
         rows = self.db.execute(
             """SELECT id, title, author, year, doi, abstract, verification_status,
-                      apa_reference, authors, metadata_user_edited
+                      apa_reference, authors, metadata_user_edited, filename
                FROM documents
                WHERE user_id = ? AND project_id = ?
                ORDER BY title COLLATE NOCASE""",
@@ -131,6 +145,7 @@ class LiteratureService:
             "apa_reference": row["apa_reference"],
             "authors": authors,
             "metadata_user_edited": bool(row["metadata_user_edited"]),
+            "filename": row["filename"] if "filename" in row.keys() else None,
         }
 
     # --- editable literature entries ----------------------------------------
@@ -310,10 +325,12 @@ class LiteratureService:
     # --- editable paper metadata --------------------------------------------
 
     def get_metadata(self, paper_id: str, user_id: str, project_id: str) -> Optional[dict]:
-        """Returns the raw paper metadata that feeds the APA reference."""
+        """Returns the raw paper metadata that feeds the APA reference, plus
+        any unresolved metadata candidates for the paper."""
         row = self.db.execute(
             """SELECT id, title, author, year, doi, abstract, verification_status,
-                      apa_reference, authors, metadata_user_edited, file_type
+                      apa_reference, authors, metadata_user_edited, file_type,
+                      extracted_doi, metadata_candidates
                FROM documents
                WHERE id = ? AND user_id = ? AND project_id = ?""",
             (paper_id, user_id, project_id),
@@ -323,8 +340,19 @@ class LiteratureService:
         return self._metadata_from_row(row)
 
     @staticmethod
+    def _parse_candidates(raw) -> List[dict]:
+        if not raw:
+            return []
+        try:
+            value = json.loads(raw)
+            return value if isinstance(value, list) else []
+        except (TypeError, ValueError):
+            return []
+
+    @staticmethod
     def _metadata_from_row(row) -> dict:
         paper = LiteratureService._paper_from_row(row)
+        candidates = LiteratureService._parse_candidates(row["metadata_candidates"])
         return {
             "title": paper["title"],
             "authors": paper["authors"],
@@ -335,7 +363,37 @@ class LiteratureService:
             "verification_status": paper["verification_status"],
             "metadata_user_edited": paper["metadata_user_edited"],
             "file_type": row["file_type"] if "file_type" in row.keys() else None,
+            "extracted_doi": row["extracted_doi"] if "extracted_doi" in row.keys() else None,
+            "candidates": candidates,
         }
+
+    def apply_candidate(
+        self, paper_id: str, user_id: str, project_id: str, index: int
+    ) -> Optional[dict]:
+        """Adopts a stored metadata candidate (chosen by the user) as the
+        paper's verified metadata. Freezes it so rebuilds keep the choice."""
+        meta = self.get_metadata(paper_id, user_id, project_id)
+        if meta is None or not (0 <= index < len(meta.get("candidates") or [])):
+            return None
+        record = meta["candidates"][index]
+        fields = {
+            "title": record.get("title"),
+            "authors": record.get("authors") or [],
+            "year": record.get("year"),
+            "doi": record.get("doi"),
+            "abstract": record.get("abstract"),
+        }
+        updated = self.update_metadata(paper_id, user_id, project_id, fields)
+        if updated is None:
+            return None
+        self.db.execute(
+            """UPDATE documents
+               SET verification_status = 'verified', metadata_candidates = '[]'
+               WHERE id = ? AND user_id = ? AND project_id = ?""",
+            (paper_id, user_id, project_id),
+        )
+        self.db.commit()
+        return self.get_metadata(paper_id, user_id, project_id)
 
     def update_metadata(
         self, paper_id: str, user_id: str, project_id: str, fields: dict
@@ -499,95 +557,240 @@ class LiteratureService:
 
     # --- Crossref enrichment ------------------------------------------------
 
-    def enrich(self, paper: dict) -> dict:
-        """Attempts Crossref enrichment. Never raises; marks `unverified` when
-        the lookup fails or the best title match is below confidence."""
-        title = (paper.get("title") or "").strip()
-        if not title or len(title) < 10:
-            paper["verification_status"] = None
-            return paper
+    def enrich(self, paper: dict, user_id: Optional[str] = None) -> dict:
+        """Best-effort metadata enrichment. Never raises.
+
+        Order of confidence:
+        1. A DOI extracted from the PDF's first page → exact Crossref lookup
+           (authoritative, always ``verified``).
+        2. A DOI produced by the LLM's first-page reading → exact Crossref lookup.
+        3. Title-based search across Crossref + OpenAlex, cross-checked with
+           author/year sanity before marking ``verified``.
+        4. LLM-extracted metadata (title/authors/year/journal) as a best-effort
+           fill-in marked ``ai`` when nothing external corroborates it — the user
+           can adjust it in the metadata modal later.
+        5. No trustworthy match → ``unverified`` with candidates stored for the
+           user to pick from manually.
+
+        Papers whose metadata the user already edited are left untouched.
+        """
         if paper.get("metadata_user_edited"):
-            paper["verification_status"] = None
             return paper
-        try:
-            response = requests.get(
-                "https://api.crossref.org/works",
-                params={
-                    "query.bibliographic": title,
-                    "rows": 6,
-                    "mailto": CROSSREF_MAILTO,
-                },
-                timeout=CROSSREF_TIMEOUT,
+
+        title = (paper.get("title") or "").strip()
+        first_page = self._first_page_text(paper["id"])
+        paper["extracted_doi"] = extract_doi(first_page)
+        heuristic = heuristic_title(first_page) or title or self._title_from_filename(paper)
+
+        if not heuristic or len(heuristic) < 10:
+            paper["verification_status"] = None
+            paper["metadata_candidates"] = []
+            return paper
+
+        if paper["extracted_doi"]:
+            record = metadata_sources.crossref_by_doi(paper["extracted_doi"])
+            if record:
+                record["title"] = record["title"] or heuristic
+                self._apply_record(paper, record, verified=True)
+                paper["metadata_candidates"] = []
+                return paper
+
+        llm_fields = self._ai_extract(user_id, first_page, paper.get("filename"))
+        ai_candidate = self._ai_candidate(llm_fields)
+        if ai_candidate and ai_candidate.get("doi"):
+            record = metadata_sources.crossref_by_doi(ai_candidate["doi"])
+            if record:
+                record["title"] = record["title"] or ai_candidate["title"]
+                self._apply_record(paper, record, verified=True)
+                paper["metadata_candidates"] = []
+                return paper
+
+        query_title = (ai_candidate or {}).get("title") or heuristic
+        external = metadata_sources.crossref_by_title(query_title)
+        external += metadata_sources.openalex_by_title(query_title)
+
+        best, score = self._pick_best(query_title, external)
+        if best is not None and score >= CITATION_THRESHOLD:
+            verified = score >= VERIFIED_TITLE_THRESHOLD and self._sanity_ok(
+                paper, first_page, best, llm_fields
             )
-            response.raise_for_status()
-            items = response.json().get("message", {}).get("items", [])
-        except Exception:
-            paper["verification_status"] = None
-            return paper
-        if not items:
+            self._apply_record(paper, best, verified=verified)
+            if verified:
+                paper["metadata_candidates"] = []
+                return paper
+
+        if ai_candidate:
+            self._apply_record(paper, ai_candidate, verified=False, fill=True)
+            paper["verification_status"] = "ai"
+        else:
             paper["verification_status"] = "unverified"
-            return paper
-        best, score = self._best_title_match(title, items)
-        if best is None or score < CITATION_THRESHOLD:
-            paper["verification_status"] = "unverified"
-            return paper
-        paper["verification_status"] = "verified"
-        paper["doi"] = best.get("DOI")
-        paper["year"] = self._crossref_year(best)
-        paper["authors"] = self._crossref_authors(best)
-        paper["abstract"] = self._strip_xml(best.get("abstract") or "") or paper.get("abstract")
+        paper["metadata_candidates"] = (external + ([ai_candidate] if ai_candidate else []))[:MAX_CANDIDATES]
         return paper
+
+    def _ai_extract(
+        self, user_id: Optional[str], first_page: Optional[str], filename: Optional[str]
+    ) -> dict:
+        if not user_id or not first_page:
+            return {}
+        from app.features.literature.llm_service import LiteratureLLMService
+
+        try:
+            llm = LiteratureLLMService(self.db)
+            return llm.extract_paper_metadata(user_id, first_page, filename or "") or {}
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _ai_candidate(fields: dict) -> Optional[dict]:
+        title = (fields.get("title") or "").strip()
+        if not title or len(title.split()) < 3:
+            return None
+        authors = fields.get("authors") or []
+        if not isinstance(authors, list):
+            authors = []
+        authors = [a.strip() for a in authors if isinstance(a, str) and a.strip()]
+        doi = (fields.get("doi") or "").strip() or None
+        if doi:
+            doi = (
+                doi.replace("https://doi.org/", "")
+                .replace("http://doi.org/", "")
+                .replace("http://dx.doi.org/", "")
+                .rstrip(".,")
+                .lower()
+                or None
+            )
+        year = fields.get("year")
+        try:
+            year = int(year) if year not in (None, "") else None
+        except (TypeError, ValueError):
+            year = None
+        journal = (fields.get("journal") or "").strip() or None
+        return {
+            "source": "ai",
+            "doi": doi,
+            "title": title,
+            "authors": authors,
+            "year": year,
+            "abstract": None,
+            "container_title": journal,
+        }
+
+    @staticmethod
+    def _title_from_filename(paper: dict) -> Optional[str]:
+        filename = paper.get("filename") or ""
+        name = filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+        if name.lower().endswith(".pdf"):
+            name = name[:-4]
+        name = re.sub(r"[\s_]+", " ", name).strip()
+        return name or None
+
+    def _apply_record(self, paper: dict, record: dict, verified: bool, fill: bool = False) -> None:
+        paper["verification_status"] = "verified" if verified else "unverified"
+        if verified or fill:
+            paper["doi"] = record.get("doi") or paper.get("doi")
+            paper["year"] = record.get("year") or paper.get("year")
+            paper["authors"] = record.get("authors") or paper.get("authors") or []
+            paper["abstract"] = (
+                metadata_sources.strip_xml(record.get("abstract")) or paper.get("abstract")
+            )
+            if record.get("title"):
+                paper["title"] = record["title"]
+
+    @staticmethod
+    def _pick_best(query_title: str, candidates: List[dict]) -> Tuple[Optional[dict], float]:
+        best, best_score = None, 0.0
+        for record in candidates:
+            record_title = record.get("title")
+            if not record_title:
+                continue
+            score = fuzz.token_set_ratio(query_title.lower(), record_title.lower())
+            if score > best_score:
+                best, best_score = record, float(score)
+        return best, best_score
+
+    @staticmethod
+    def _sanity_ok(
+        paper: dict,
+        first_page: Optional[str],
+        record: dict,
+        llm_hints: Optional[dict] = None,
+    ) -> bool:
+        """Author/year sanity gate before marking a title match as verified.
+
+        If the PDF reveals a year (directly, or via the LLM's reading), a
+        candidate more than two years off is rejected. If we know the paper's
+        authors, a candidate sharing none of their family names is rejected.
+        Unknown information is skipped, so a strong title match without
+        author/year hints still verifies.
+        """
+        llm_hints = llm_hints or {}
+        found_year = extract_year(first_page) if first_page else None
+        if not found_year and llm_hints.get("year"):
+            found_year = llm_hints["year"]
+        if found_year and record.get("year") and abs(int(record["year"]) - int(found_year)) > 2:
+            return False
+        paper_authors = paper.get("authors") or []
+        if not paper_authors:
+            paper_authors = llm_hints.get("authors") or []
+        record_authors = record.get("authors") or []
+        if paper_authors and record_authors:
+            paper_families = {LiteratureService._family(a) for a in paper_authors if a}
+            record_families = {LiteratureService._family(a) for a in record_authors if a}
+            paper_families.discard("")
+            record_families.discard("")
+            if paper_families and record_families and not (paper_families & record_families):
+                return False
+        return True
+
+    @staticmethod
+    def _family(name: str) -> str:
+        if ", " in name:
+            return name.split(",", 1)[0].strip().lower()
+        parts = name.split()
+        return parts[-1].lower() if parts else ""
+
+    def _first_page_text(self, paper_id: str) -> Optional[str]:
+        """Text of the first page of the stored PDF, or None."""
+        row = self.db.execute(
+            "SELECT file_path, file_type FROM documents WHERE id = ?",
+            (paper_id,),
+        ).fetchone()
+        if not row or not row["file_path"]:
+            return None
+        path = Path(row["file_path"])
+        if not path.is_file() or path.suffix.lower() != ".pdf":
+            return None
+        try:
+            import fitz
+
+            with fitz.open(str(path)) as doc:
+                if not doc.page_count:
+                    return None
+                return doc[0].get_text() or None
+        except Exception:
+            return None
 
     def save_enrichment(self, paper: dict) -> None:
         self.db.execute(
             """UPDATE documents
-               SET year = ?, doi = ?, abstract = ?, authors = ?,
-                   verification_status = ?, apa_reference = ?
+               SET title = ?, year = ?, doi = ?, abstract = ?, authors = ?,
+                   verification_status = ?, apa_reference = ?, extracted_doi = ?,
+                   metadata_candidates = ?
                WHERE id = ?""",
             (
+                paper.get("title"),
                 paper.get("year"),
                 paper.get("doi"),
                 paper.get("abstract"),
                 json.dumps(paper.get("authors") or []),
                 paper.get("verification_status"),
                 self.apa_reference(paper),
+                paper.get("extracted_doi"),
+                json.dumps(paper.get("metadata_candidates") or []),
                 paper["id"],
             ),
         )
         self.db.commit()
-
-    @staticmethod
-    def _best_title_match(title: str, items: List[dict]) -> Tuple[Optional[dict], float]:
-        best, best_score = None, 0.0
-        for item in items:
-            raw_titles = item.get("title") or []
-            if not raw_titles:
-                continue
-            score = fuzz.token_set_ratio(title.lower(), str(raw_titles[0]).lower())
-            if score > best_score:
-                best, best_score = item, float(score)
-        return best, best_score
-
-    @staticmethod
-    def _crossref_year(item: dict) -> Optional[int]:
-        for key in ("published-print", "published-online", "issued", "created"):
-            parts = (item.get(key) or {}).get("date-parts") or []
-            if parts and parts[0] and parts[0][0]:
-                try:
-                    return int(parts[0][0])
-                except (TypeError, ValueError):
-                    pass
-        return None
-
-    @staticmethod
-    def _crossref_authors(item: dict) -> List[str]:
-        out = []
-        for author in item.get("author") or []:
-            family = (author.get("family") or "").strip()
-            given = (author.get("given") or "").strip()
-            if family:
-                out.append(f"{family}, {given}" if given else family)
-        return out
 
     @staticmethod
     def _strip_xml(text: str) -> str:
@@ -804,7 +1007,7 @@ class LiteratureService:
         report(15, "Enriching metadata")
         total = len(papers)
         for idx, paper in enumerate(papers):
-            self.enrich(paper)
+            self.enrich(paper, user_id=user_id)
             self.save_enrichment(paper)
             report(15 + int((idx + 1) / total * 30), "Enriching metadata")
 

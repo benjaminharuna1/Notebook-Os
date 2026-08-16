@@ -11,6 +11,7 @@ from app.features.literature import jobs
 from app.features.literature.llm_service import LiteratureLLMService
 from app.features.literature.schemas import (
     LiteratureBuildJob,
+    LiteratureCandidateApply,
     LiteratureClusterSummaryRequest,
     LiteratureEntry,
     LiteratureEntryUpdate,
@@ -141,6 +142,21 @@ async def update_paper_metadata(
     )
     if metadata is None:
         raise HTTPException(status_code=404, detail="Paper not found in this project")
+    return metadata
+
+
+@router.post("/projects/{project_id}/literature/entries/{paper_id}/candidates/apply")
+async def apply_literature_candidate(
+    project_id: str,
+    paper_id: str,
+    req: LiteratureCandidateApply,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    service = LiteratureService(db)
+    metadata = service.apply_candidate(paper_id, current_user["id"], project_id, req.index)
+    if metadata is None:
+        raise HTTPException(status_code=404, detail="Paper or candidate not found")
     return metadata
 
 

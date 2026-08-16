@@ -746,11 +746,13 @@
             {/if}
             {#if meta.verification_status}
               <p>
-                {#if meta.verification_status === 'verified'}
-                  <span class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300">✓ Verified metadata</span>
-                {:else}
-                  <span class="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">⚠ Unverified metadata</span>
-                {/if}
+            {#if meta.verification_status === 'verified'}
+              <span class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300">✓ Verified metadata</span>
+            {:else if meta.verification_status === 'ai'}
+              <span class="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-medium text-sky-300">AI-extracted — review</span>
+            {:else}
+              <span class="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">⚠ Unverified metadata</span>
+            {/if}
               </p>
             {/if}
             {#if meta.doi}

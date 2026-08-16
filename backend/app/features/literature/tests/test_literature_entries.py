@@ -283,7 +283,7 @@ def test_enrich_skips_user_edited_metadata():
     service.update_metadata("p1", "u1", "proj1", {"authors": ["Manual, Author"], "year": 1999})
 
     paper = next(p for p in service.papers("u1", "proj1") if p["id"] == "p1")
-    with patch("app.features.literature.service.requests.get") as mock_get:
+    with patch("app.features.literature.metadata.requests.get") as mock_get:
         enriched = service.enrich(paper)
 
     assert enriched["year"] == 1999

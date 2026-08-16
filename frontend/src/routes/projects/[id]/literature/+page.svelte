@@ -6,6 +6,7 @@
   import type { LiteratureEntry, LiteratureMapResponse } from '$lib/features/graph/types';
   import type { SearchResult } from '$lib/features/search/types';
   import {
+    applyPaperCandidate,
     exportLiteratureMap,
     getLiteratureEntries,
     getLiteratureJob,
@@ -17,7 +18,7 @@
     updateLiteratureEntry,
     updatePaperMetadata,
   } from '$lib/features/literature/api';
-  import type { LiteratureMetadata } from '$lib/features/literature/api';
+  import type { LiteratureMetadata, MetadataCandidate } from '$lib/features/literature/api';
 
   const projectId = $derived($page.params.id);
 
@@ -60,10 +61,12 @@
     abstract: string;
     apaReference: string;
     fileType: string;
+    candidates: MetadataCandidate[];
   } | null>(null);
   let metaLoading = $state(false);
   let metaSaving = $state(false);
   let metaError = $state('');
+  let applyingCandidate = $state<number | null>(null);
 
   let pdfModal = $state<{ paperId: string; title: string; fileType: string } | null>(null);
   let pdfLoading = $state(false);
@@ -265,11 +268,40 @@
         abstract: meta.abstract ?? '',
         apaReference: meta.apa_reference ?? '',
         fileType: meta.file_type ?? 'pdf',
+        candidates: meta.candidates ?? [],
       };
     } catch (e) {
       metaError = e instanceof Error ? e.message : String(e ?? 'Could not load metadata');
     } finally {
       metaLoading = false;
+    }
+  }
+
+  async function applyCandidate(index: number) {
+    if (!projectId || !metaModal) return;
+    applyingCandidate = index;
+    metaError = '';
+    try {
+      const meta = await applyPaperCandidate(projectId, metaModal.paperId, index);
+      metaModal = {
+        ...metaModal,
+        title: meta.title ?? '',
+        authorsText: (meta.authors ?? []).join('; '),
+        year: meta.year != null ? String(meta.year) : '',
+        doi: meta.doi ?? '',
+        abstract: meta.abstract ?? '',
+        apaReference: meta.apa_reference ?? '',
+        candidates: meta.candidates ?? [],
+      };
+      const paperId = metaModal.paperId;
+      metaModal = null;
+      await loadEntries();
+      savedId = paperId;
+      build();
+    } catch (e) {
+      metaError = e instanceof Error ? e.message : String(e ?? 'Could not apply metadata');
+    } finally {
+      applyingCandidate = null;
     }
   }
 
@@ -772,6 +804,43 @@
                 {metaModal.apaReference}
               </p>
             </div>
+            {#if (metaModal.candidates ?? []).length > 0}
+              <div class="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p class="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+                  Unverified paper — suggested records
+                </p>
+                <p class="mt-0.5 text-xs text-amber-700/80">
+                  Pick a record to apply it as the verified metadata.
+                </p>
+                <div class="mt-2 space-y-2">
+                  {#each metaModal.candidates as candidate, i (i)}
+                    <div class="flex items-start gap-3 rounded-lg border border-amber-200 bg-white p-2.5">
+                      <div class="min-w-0 flex-1">
+                        <p class="truncate text-sm font-medium text-slate-900">
+                          {candidate.title ?? 'Untitled'}
+                        </p>
+                        <p class="mt-0.5 truncate text-xs text-slate-500">
+                          {candidate.authors?.length ? candidate.authors.join('; ') : 'Unknown authors'}
+                          {candidate.year ? `(${candidate.year})` : ''}
+                        </p>
+                        <p class="truncate text-xs text-slate-400">
+                          {candidate.source ?? 'source'}
+                          {candidate.doi ? ` · doi:${candidate.doi}` : ''}
+                          {candidate.confidence != null ? ` · ${Math.round(candidate.confidence * 100)}%` : ''}
+                        </p>
+                      </div>
+                      <button
+                        onclick={() => applyCandidate(i)}
+                        disabled={applyingCandidate !== null}
+                        class="shrink-0 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        {applyingCandidate === i ? 'Applying…' : 'Use this'}
+                      </button>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            {/if}
           </div>
           <div class="flex justify-end gap-2 border-t border-slate-200 px-5 py-3">
             <button
