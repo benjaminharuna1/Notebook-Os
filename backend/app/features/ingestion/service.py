@@ -100,7 +100,7 @@ class IngestionService:
             extracted = extractor.extract(row["file_path"])
             job_manager.checkpoint(doc_id)
 
-            chunks = ProcessingService(settings_dict).process(extracted.text, doc_id)
+            chunks = ProcessingService(settings_dict).process(extracted.text, doc_id, extracted.pages)
             job_manager.checkpoint(doc_id)
 
             conn.execute(
@@ -111,6 +111,8 @@ class IngestionService:
 
             # Drop stale vectors from any earlier run/failed attempt for this doc.
             self._delete_vectors(doc_id, settings_dict)
+            conn.execute("DELETE FROM chunks WHERE document_id = ?", (doc_id,))
+            conn.commit()
 
             embedding = EmbeddingService(settings_dict)
             batch_size = settings.EMBED_BATCH_SIZE

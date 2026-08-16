@@ -1,10 +1,27 @@
+import json
+
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     APP_NAME: str = "Notebook AI OS"
     APP_VERSION: str = "0.1.0"
-    CORS_ORIGINS: list[str] = ["http://localhost:5173"]
+    # One or more allowed browser origins. Accepts either a comma-separated
+    # string (`http://localhost:5173,http://localhost:5174`) or a JSON list
+    # (`["http://localhost:5173","http://localhost:5174"]`).
+    CORS_ORIGINS: str = "http://localhost:5173"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        text = self.CORS_ORIGINS.strip()
+        if text.startswith("["):
+            try:
+                parsed = json.loads(text)
+                if isinstance(parsed, list):
+                    return [str(item).strip() for item in parsed if str(item).strip()]
+            except json.JSONDecodeError:
+                pass
+        return [item.strip() for item in text.split(",") if item.strip()]
 
     DATABASE_URL: str = "sqlite+aiosqlite:///./data/notebook.db"
     CHROMA_DB_PATH: str = "./data/chroma_db"

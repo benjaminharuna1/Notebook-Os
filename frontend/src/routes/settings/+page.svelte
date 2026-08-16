@@ -20,15 +20,21 @@
   const chatOptions = $derived.by(() => {
     const opts: { id: string; name: string; group: string; provider: string }[] = [];
     for (const m of localStatus?.ollama_models ?? []) {
-      opts.push({ id: `ollama:${m}`, name: m, group: 'Ollama models', provider: 'ollama' });
+      opts.push({ id: `ollama:${m}`, name: m, group: 'Ollama models (installed)', provider: 'ollama' });
     }
     for (const d of downloads) {
       if (d.kind === 'chat' && d.downloaded) {
         opts.push({ id: `local:${d.key}`, name: d.name, group: 'Downloaded local models (llama.cpp)', provider: 'local' });
       }
     }
+    if (llmSelection && !opts.some((o) => o.id === llmSelection)) {
+      const [, ...rest] = llmSelection.split(':');
+      opts.push({ id: llmSelection, name: rest.join(':'), group: 'Not installed (saved selection)', provider: '' });
+    }
     return opts;
   });
+
+  const chatGroups = $derived.by(() => [...new Set(chatOptions.map((o) => o.group))]);
 
   const embeddingOptions = $derived.by(() =>
     (catalog?.embeddings ?? []).map((e) => ({ id: `${e.provider}|${e.model}`, provider: e.provider, model: e.model, note: e.note, dim: e.dim }))
@@ -208,7 +214,7 @@
               <label class="mb-1 block text-sm font-medium text-slate-700">Default LLM</label>
               <select bind:value={llmSelection} onchange={(e) => applyLlmSelection(e.currentTarget.value)} class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm">
                 <option value="">— Choose a model —</option>
-                {#each ['Ollama models', 'Downloaded local models (llama.cpp)'] as group}
+                {#each chatGroups as group}
                   {#if chatOptions.some((o) => o.group === group)}
                     <optgroup label={group}>
                       {#each chatOptions.filter((o) => o.group === group) as opt}

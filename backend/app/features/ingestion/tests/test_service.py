@@ -194,6 +194,12 @@ async def test_ingest_queues_then_pipeline_indexes(monkeypatch, tmp_path):
                 filename TEXT, file_path TEXT, file_type TEXT, file_size INTEGER, page_count INTEGER,
                 status TEXT, error TEXT, indexed_at TEXT)"""
         )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS chunks (
+                id TEXT PRIMARY KEY, document_id TEXT, chunk_index INTEGER, content TEXT,
+                page_number INTEGER, char_start INTEGER, char_end INTEGER,
+                token_count INTEGER, embedded_at DATETIME)"""
+        )
         c.commit()
         return c
 
@@ -210,7 +216,7 @@ async def test_ingest_queues_then_pipeline_indexes(monkeypatch, tmp_path):
 
     class _FakeExtractor:
         def extract(self, path):
-            return SimpleNamespace(title="Report", page_count=3, text="hello world")
+            return SimpleNamespace(title="Report", page_count=3, text="hello world", pages=None)
 
     service.extractors = {"pdf": _FakeExtractor()}
 

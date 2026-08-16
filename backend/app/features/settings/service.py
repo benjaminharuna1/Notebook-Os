@@ -50,20 +50,22 @@ class SettingsService:
             current = json.loads(row["settings"])
 
         updates = req.model_dump(exclude_unset=True)
+        previous_tier = current.get("device_tier")
         current.update(updates)
 
         # Choosing a device tier also applies that tier's local model defaults.
-        # Only when the tier itself changed in this request — otherwise saving
-        # settings would clobber a model the user picked from a dropdown.
-        tier = updates.get("device_tier")
-        if tier in DEVICE_TIERS:
-            t = DEVICE_TIERS[tier]
+        # Only when the tier itself changed — the frontend sends the whole
+        # settings object on every save, so presence alone must not clobber a
+        # model the user picked from a dropdown.
+        new_tier = updates.get("device_tier")
+        if new_tier in DEVICE_TIERS and new_tier != previous_tier:
+            t = DEVICE_TIERS[new_tier]
             current["default_llm"] = t["default_llm"]
             current["ollama_model"] = t["ollama_model"]
             current["chunk_size"] = t["chunk_size"]
             current["chunk_overlap"] = t["chunk_overlap"]
             current["max_tokens"] = t["max_tokens"]
-            if tier != "high":
+            if new_tier != "high":
                 current["embedding_provider"] = "fastembed"
                 current["embedding_model"] = t["embedding_model"]
 

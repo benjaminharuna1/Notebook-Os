@@ -52,6 +52,7 @@ export function createSSEConnection(
   onChunk: (data: string) => void,
   onDone: (sessionId: string) => void,
   onError: (error: Error) => void,
+  onSources?: (sources: unknown) => void,
 ): () => void {
   const controller = new AbortController();
   const authToken = get(token);
@@ -89,7 +90,7 @@ export function createSSEConnection(
             const data = JSON.parse(line.slice(6));
             if (data.type === 'chunk') onChunk(data.content);
             else if (data.type === 'sources') {
-              // reserved for future source rendering
+              onSources?.(data.sources);
             } else if (data.type === 'error') {
               finished = true;
               onError(new Error(data.detail || 'Generation failed'));
@@ -116,5 +117,6 @@ export const api = {
   get: <T>(endpoint: string) => request<T>(endpoint),
   post: <T>(endpoint: string, body: unknown) => request<T>(endpoint, { method: 'POST', body }),
   put: <T>(endpoint: string, body: unknown) => request<T>(endpoint, { method: 'PUT', body }),
+  patch: <T>(endpoint: string, body: unknown) => request<T>(endpoint, { method: 'PATCH', body }),
   delete: <T>(endpoint: string) => request<T>(endpoint, { method: 'DELETE' }),
 };

@@ -1,6 +1,6 @@
 from typing import List
 
-from app.core.database import get_chroma_client
+from app.core.database import get_chroma_client, get_sqlite_connection
 from app.features.embedding.providers.factory import (
     resolve_collection_name,
     resolve_embedding_provider,
@@ -44,3 +44,30 @@ class EmbeddingService:
                 meta["project_id"] = project_id
 
         collection.add(ids=ids, embeddings=embeddings, metadatas=metadatas, documents=texts)
+
+        # Persist chunks to SQLite as well — the knowledge graph (and any
+        # other chunk-level feature) reads from the chunks table, not Chroma.
+        db = get_sqlite_connection()
+        try:
+            db.executemany(
+                """INSERT OR REPLACE INTO chunks
+                   (id, document_id, chunk_index, content, page_number, char_start,
+                    char_end, token_count, embedded_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
+                [
+                    (
+                        c["id"],
+                        c["document_id"],
+                        int(c.get("chunk_index", 0)),
+                        c["content"],
+                        int(c.get("page_number") or 0),
+                        c.get("char_start"),
+                        c.get("char_end"),
+                        int(c.get("token_count") or 0),
+                    )
+                    for c in chunks
+                ],
+            )
+            db.commit()
+        finally:
+            db.close()

@@ -63,3 +63,39 @@ class TestGraphBuilder:
         for edge in edges:
             assert edge["source"] in node_ids
             assert edge["target"] in node_ids
+
+    def test_preferences_keep_weak_concepts_within_caps(self):
+        import string
+
+        names = [a + b for a in string.ascii_uppercase for b in string.ascii_lowercase][:40]
+        chunks = [
+            {"id": f"c{i}", "document_id": "d", "content": f"{names[i]} topic"}
+            for i in range(40)
+        ]
+        chunks.append({"id": "cx", "document_id": "d", "content": "Zebra Quest is one thing"})
+
+        plain, _ = GraphBuilder(max_nodes=10).build(chunks)
+        assert "Zebra Quest" not in {n["label"] for n in plain}
+
+        boosted, _ = GraphBuilder(max_nodes=10).build(chunks, preferences=["zebra quest", "  "])
+        labels = [n["label"] for n in boosted]
+        assert "Zebra Quest" in labels
+
+    def test_preferences_rank_matching_edges_first(self):
+        chunks = [
+            {"id": "c1", "document_id": "d", "content": "Aardvark Zoo and Special Focus overlap"},
+            {"id": "c2", "document_id": "d", "content": "Special Focus and Zebra Valley overlap"},
+            {"id": "c3", "document_id": "d", "content": "Mango Tree and Pine Forest overlap"},
+        ]
+        _, edges = GraphBuilder(max_edges=2).build(chunks, preferences=["special focus"])
+        sources = [e["source"] for e in edges]
+        targets = [e["target"] for e in edges]
+        touched = {s for s in sources} | {t for t in targets}
+        assert "concept:Special Focus" in touched
+
+    def test_preferences_are_normalized(self):
+        chunks = [
+            {"id": "c1", "document_id": "d", "content": "Quantum Computing is real"},
+        ]
+        nodes, _ = GraphBuilder().build(chunks, preferences=["  ", "", "QUANTUM COMPUTING"])
+        assert any(n["label"] == "Quantum Computing" for n in nodes)

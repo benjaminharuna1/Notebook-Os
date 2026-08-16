@@ -18,6 +18,7 @@ def get_sqlite_connection() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=30000")
     return conn
 
 
@@ -118,6 +119,26 @@ def init_sqlite_db():
             installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (user_id, skill_id)
         );
+
+        CREATE TABLE IF NOT EXISTS tracked_concepts (
+            id          TEXT PRIMARY KEY,
+            user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            concept     TEXT NOT NULL,
+            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, project_id, concept)
+        );
+
+        CREATE TABLE IF NOT EXISTS graph_history (
+            id          TEXT PRIMARY KEY,
+            user_id     TEXT NOT NULL,
+            project_id  TEXT NOT NULL,
+            graph_json  TEXT NOT NULL,
+            fingerprint TEXT NOT NULL,
+            prefs_key   TEXT NOT NULL,
+            is_favourite INTEGER NOT NULL DEFAULT 0,
+            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     """)
 
     # Lightweight migrations for databases created before these columns existed.
@@ -136,6 +157,7 @@ def init_sqlite_db():
     for statement in (
         "CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id)",
         "CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_graph_history_lookup ON graph_history(user_id, project_id, created_at)",
     ):
         try:
             cursor.execute(statement)
