@@ -176,12 +176,14 @@ def test_citation_edges_match_reference_list_to_title():
     service = LiteratureService(db)
     papers = service.papers("u1", "proj1")
 
-    edges, refs = service.citation_edges(papers)
+    edges, refs, unmatched = service.citation_edges(papers)
 
     pairs = {frozenset((e["source"], e["target"])) for e in edges if e["edge_type"] == "citation"}
     assert frozenset(("p1", "p2")) in pairs
     assert any(r["paper_id"] == "p1" and r["matched_paper_id"] == "p2" for r in refs)
     assert refs[0]["confidence"] >= 0.8
+    assert all(u["paper_id"] == "p1" for u in unmatched)
+    assert all(u["raw_ref"] for u in unmatched)
 
 
 def test_build_map_produces_nodes_edges_clusters_and_layout():
@@ -284,3 +286,98 @@ def test_build_job_end_to_end_persists_checkpoint():
         conn.close()
     finally:
         os.unlink(tmp_path)
+
+
+# --- AI-judged graph edges ---------------------------------------------------
+
+
+def test_related_pairs_returns_llm_similarity_edges():
+    db = _db()
+    papers = [
+        {"id": "p1", "title": "Quantum Machine Learning Review", "year": 2021, "abstract": "Overview of quantum methods."},
+        {"id": "p2", "title": "Quantum Machine Learning Survey", "year": 2022, "abstract": "Survey of quantum approaches."},
+        {"id": "p3", "title": "Rural Farm Budgets", "year": 2014, "abstract": "Household budgets in the Eastern Cape."},
+    ]
+    llm = LiteratureLLMService(db)
+
+    async def fake_call(self, user_id, system, user):
+        return json.dumps([{"a": 1, "b": 2, "similarity": 0.9}])
+
+    with patch.object(LiteratureLLMService, "_call", new=fake_call):
+        edges = llm.related_pairs("u1", papers)
+
+    assert len(edges) == 1
+    assert {edges[0]["source"], edges[0]["target"]} == {"p1", "p2"}
+    assert edges[0]["weight"] == 0.9
+    assert edges[0]["edge_type"] == "similarity"
+
+
+def test_related_pairs_returns_empty_when_no_model():
+    db = _db()
+    llm = LiteratureLLMService(db)
+    papers = [{"id": "p1", "title": "A"}, {"id": "p2", "title": "B"}]
+    with patch.object(LiteratureLLMService, "active_model", return_value=None):
+        assert llm.related_pairs("u1", papers) == []
+
+
+def test_match_reference_lines_matches_garbled_citations():
+    db = _db()
+    papers = [
+        {"id": "p1", "title": "Attention Is All You Need", "authors": ["Vaswani, A."], "year": 2017},
+        {"id": "p2", "title": "Deep Learning Survey", "authors": ["Goodfellow, I."], "year": 2020},
+    ]
+    refs = [{"paper_id": "p1", "raw_ref": "Goodfellow et al., Deep Learn Surv 2020."}]
+    llm = LiteratureLLMService(db)
+
+    async def fake_call(self, user_id, system, user):
+        return json.dumps([{"ref_index": 1, "paper_index": 2, "confidence": 0.9}])
+
+    with patch.object(LiteratureLLMService, "_call", new=fake_call):
+        matched = llm.match_reference_lines("u1", refs, papers)
+
+    assert len(matched) == 1
+    assert matched[0]["paper_id"] == "p1"
+    assert matched[0]["matched_paper_id"] == "p2"
+    assert matched[0]["confidence"] == 0.9
+
+
+def test_ai_edge_pass_merges_similarity_and_citation_edges():
+    db = _db()
+    service = LiteratureService(db)
+    papers = [{"id": "p1", "title": "A"}, {"id": "p2", "title": "B"}]
+    unmatched = [{"paper_id": "p1", "raw_ref": "B, garbled 2020."}]
+
+    with patch.object(LiteratureLLMService, "active_model", return_value={"id": "m"}), patch.object(
+        LiteratureLLMService,
+        "related_pairs",
+        return_value=[{"source": "p1", "target": "p2", "weight": 0.8, "edge_type": "similarity"}],
+    ), patch.object(
+        LiteratureLLMService,
+        "match_reference_lines",
+        return_value=[
+            {"paper_id": "p1", "raw_ref": "B, garbled 2020.", "matched_paper_id": "p2", "confidence": 0.85}
+        ],
+    ):
+        edges, refs = service._ai_edge_pass("u1", papers, unmatched, [])
+
+    assert len(edges) == 2
+    assert len(refs) == 1
+    assert any(e["edge_type"] == "similarity" for e in edges)
+    assert any(e["edge_type"] == "citation" for e in edges)
+
+
+def test_ai_edge_pass_skips_pairs_already_connected():
+    db = _db()
+    service = LiteratureService(db)
+    papers = [{"id": "p1", "title": "A"}, {"id": "p2", "title": "B"}]
+    existing = [{"source": "p1", "target": "p2", "weight": 0.9, "edge_type": "similarity"}]
+
+    with patch.object(LiteratureLLMService, "active_model", return_value={"id": "m"}), patch.object(
+        LiteratureLLMService,
+        "related_pairs",
+        return_value=[{"source": "p1", "target": "p2", "weight": 0.8, "edge_type": "similarity"}],
+    ), patch.object(LiteratureLLMService, "match_reference_lines", return_value=[]):
+        edges, refs = service._ai_edge_pass("u1", papers, [], existing)
+
+    assert edges == []
+    assert refs == []

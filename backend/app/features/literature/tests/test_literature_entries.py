@@ -448,3 +448,61 @@ def test_summarize_papers_replaces_fallback_when_llm_returns():
     assert entry["research_objective"] == "Objective A"
     assert entry["methodology"] == "Method B"
     assert "LLM unavailable" not in entry["limitations"]
+
+
+# --- reference metadata fields ------------------------------------------------
+
+
+def test_apa_reference_includes_journal_volume_issue_pages_publisher_url():
+    paper = {
+        "title": "A Study of Farming",
+        "authors": ["Kibirige, D."],
+        "year": 2014,
+        "journal": "Journal of Agriculture",
+        "volume": "12",
+        "issue": "3",
+        "pages": "44-60",
+        "publisher": "Agri Press",
+        "url": "https://example.org/paper",
+    }
+    ref = LiteratureService.apa_reference(paper)
+    assert "Kibirige, D. (2014). A Study of Farming." in ref
+    assert "Journal of Agriculture, 12(3), 44-60." in ref
+    assert "https://example.org/paper" in ref
+
+    no_journal = LiteratureService.apa_reference({**paper, "journal": None, "volume": None, "issue": None, "pages": None})
+    assert "Agri Press." in no_journal
+
+    with_doi = LiteratureService.apa_reference({**paper, "doi": "10.1000/xyz"})
+    assert "https://doi.org/10.1000/xyz" in with_doi
+    assert "https://example.org/paper" not in with_doi
+
+
+def test_update_metadata_persists_reference_fields_and_refreshes_apa():
+    db = _db()
+    _seed_paper(db, "p1", "proj1", "A Study of Farming", authors=["Kibirige, D."], year=2014)
+    service = LiteratureService(db)
+    service.ensure_entries("u1", "proj1")
+
+    meta = service.update_metadata(
+        "p1", "u1", "proj1",
+        {
+            "journal": "Journal of Agriculture",
+            "volume": "12",
+            "issue": "3",
+            "pages": "44-60",
+            "publisher": "Agri Press",
+            "url": "https://example.org/paper",
+        },
+    )
+    assert meta is not None
+    assert meta["journal"] == "Journal of Agriculture"
+    assert meta["volume"] == "12"
+    assert meta["issue"] == "3"
+    assert meta["pages"] == "44-60"
+    assert meta["publisher"] == "Agri Press"
+    assert meta["url"] == "https://example.org/paper"
+    assert "Journal of Agriculture, 12(3), 44-60." in meta["apa_reference"]
+
+    entry = service.get_entry("p1", "u1")
+    assert "Journal of Agriculture, 12(3), 44-60." in entry["apa_reference"]

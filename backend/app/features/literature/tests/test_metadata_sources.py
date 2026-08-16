@@ -369,6 +369,42 @@ def test_enrich_applies_ai_metadata_when_no_external_match(tmp_path):
     assert "Doe, Jane; Smith, John (2024)." in saved["apa_reference"]
 
 
+def test_enrich_ai_candidate_saves_abstract_and_journal_details(tmp_path):
+    db = _db()
+    _seed_paper(db, "p1", "proj1", "Uploaded File Name", file_path=str(tmp_path / "none.pdf"))
+    service = LiteratureService(db)
+    paper = service.papers("u1", "proj1")[0]
+
+    ai_fields = {
+        "title": "An Intelligent Approach to Detecting Fake News",
+        "authors": ["Doe, Jane", "Smith, John"],
+        "year": 2024,
+        "doi": None,
+        "journal": "International Journal of Things",
+        "volume": "7",
+        "issue": "2",
+        "pages": "100-120",
+        "publisher": "Things Press",
+        "url": "https://example.org/fakenews",
+        "abstract": "This study detects fake news using machine learning.",
+    }
+    with patch.object(LiteratureService, "_ai_extract", return_value=ai_fields), patch(
+        "app.features.literature.metadata.crossref_by_title", return_value=[]
+    ), patch("app.features.literature.metadata.openalex_by_title", return_value=[]):
+        paper = service.enrich(paper, user_id="u1")
+
+    service.save_enrichment(paper)
+    saved = service.papers("u1", "proj1")[0]
+    assert saved["abstract"] == "This study detects fake news using machine learning."
+    assert saved["journal"] == "International Journal of Things"
+    assert saved["volume"] == "7"
+    assert saved["issue"] == "2"
+    assert saved["pages"] == "100-120"
+    assert saved["publisher"] == "Things Press"
+    assert saved["url"] == "https://example.org/fakenews"
+    assert "International Journal of Things, 7(2), 100-120." in saved["apa_reference"]
+
+
 def test_enrich_uses_llm_title_to_query_external_sources(tmp_path):
     db = _db()
     _seed_paper(db, "p1", "proj1", "Uploaded File Name", file_path=str(tmp_path / "none.pdf"))

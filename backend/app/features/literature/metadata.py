@@ -14,7 +14,12 @@ raise. Records share a common shape::
         "authors": [str, ...],        # "Family, Given"
         "year": int | None,
         "abstract": str | None,
-        "container_title": str | None,
+        "journal": str | None,        # container / publication title
+        "volume": str | None,
+        "issue": str | None,
+        "pages": str | None,          # page range, e.g. "12-34"
+        "publisher": str | None,
+        "url": str | None,
     }
 """
 
@@ -185,7 +190,13 @@ def _crossref_record(message: dict, source: str = "crossref") -> dict:
         "authors": authors,
         "year": _crossref_year(message),
         "abstract": strip_xml(message.get("abstract")) or None,
+        "journal": (message.get("container-title") or [None])[0] or None,
         "container_title": (message.get("container-title") or [None])[0] or None,
+        "volume": (message.get("volume") or "").strip() or None,
+        "issue": (message.get("issue") or "").strip() or None,
+        "pages": (message.get("page") or "").strip() or None,
+        "publisher": (message.get("publisher") or "").strip() or None,
+        "url": (message.get("URL") or "").strip() or None,
     }
 
 
@@ -260,6 +271,15 @@ def _openalex_record(work: dict) -> dict:
     if raw_doi:
         raw_doi = str(raw_doi).replace("https://doi.org/", "").lower()
     source = (work.get("primary_location") or {}).get("source", {}) or {}
+    biblio = work.get("biblio") or {}
+    first_page = (biblio.get("first_page") or "").strip()
+    last_page = (biblio.get("last_page") or "").strip()
+    if first_page and last_page:
+        pages = f"{first_page}-{last_page}"
+    elif first_page:
+        pages = first_page
+    else:
+        pages = None
     return {
         "source": "openalex",
         "doi": raw_doi or None,
@@ -267,7 +287,13 @@ def _openalex_record(work: dict) -> dict:
         "authors": authors,
         "year": work.get("publication_year"),
         "abstract": _reconstruct_abstract(work.get("abstract_inverted_index")),
+        "journal": source.get("display_name") or None,
         "container_title": source.get("display_name") or None,
+        "volume": (biblio.get("volume") or "").strip() or None,
+        "issue": (biblio.get("issue") or "").strip() or None,
+        "pages": pages,
+        "publisher": (source.get("host_organization_name") or "").strip() or None,
+        "url": ((work.get("primary_location") or {}).get("landing_page_url") or "").strip() or None,
     }
 
 

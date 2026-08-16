@@ -83,12 +83,23 @@ export interface LiteratureMetadata {
   year?: number | null;
   doi?: string | null;
   abstract?: string | null;
+  journal?: string | null;
+  volume?: string | null;
+  issue?: string | null;
+  pages?: string | null;
+  publisher?: string | null;
+  url?: string | null;
   apa_reference?: string | null;
   verification_status?: string | null;
   metadata_user_edited?: boolean;
   extracted_doi?: string | null;
   candidates?: MetadataCandidate[];
 }
+
+export type LiteratureMetadataFields = Pick<
+  LiteratureMetadata,
+  'title' | 'authors' | 'year' | 'doi' | 'abstract' | 'journal' | 'volume' | 'issue' | 'pages' | 'publisher' | 'url'
+>;
 
 export async function getPaperMetadata(
   projectId: string,
@@ -100,7 +111,7 @@ export async function getPaperMetadata(
 export async function updatePaperMetadata(
   projectId: string,
   paperId: string,
-  fields: Partial<Pick<LiteratureMetadata, 'title' | 'authors' | 'year' | 'doi' | 'abstract'>>,
+  fields: Partial<LiteratureMetadataFields>,
 ): Promise<LiteratureMetadata> {
   return api.patch<LiteratureMetadata>(
     `/projects/${projectId}/literature/entries/${paperId}/metadata`,

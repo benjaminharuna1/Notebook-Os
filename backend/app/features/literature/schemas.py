@@ -77,6 +77,12 @@ class LiteratureMetadataUpdate(BaseModel):
     year: Optional[int] = None
     doi: Optional[str] = None
     abstract: Optional[str] = None
+    journal: Optional[str] = None
+    volume: Optional[str] = None
+    issue: Optional[str] = None
+    pages: Optional[str] = None
+    publisher: Optional[str] = None
+    url: Optional[str] = None
 
 
 class LiteratureCandidateApply(BaseModel):

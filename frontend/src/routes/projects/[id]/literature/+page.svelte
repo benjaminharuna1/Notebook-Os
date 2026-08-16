@@ -59,6 +59,12 @@
     year: string;
     doi: string;
     abstract: string;
+    journal: string;
+    volume: string;
+    issue: string;
+    pages: string;
+    publisher: string;
+    url: string;
     apaReference: string;
     fileType: string;
     candidates: MetadataCandidate[];
@@ -266,6 +272,12 @@
         year: meta.year != null ? String(meta.year) : '',
         doi: meta.doi ?? '',
         abstract: meta.abstract ?? '',
+        journal: meta.journal ?? '',
+        volume: meta.volume ?? '',
+        issue: meta.issue ?? '',
+        pages: meta.pages ?? '',
+        publisher: meta.publisher ?? '',
+        url: meta.url ?? '',
         apaReference: meta.apa_reference ?? '',
         fileType: meta.file_type ?? 'pdf',
         candidates: meta.candidates ?? [],
@@ -290,6 +302,12 @@
         year: meta.year != null ? String(meta.year) : '',
         doi: meta.doi ?? '',
         abstract: meta.abstract ?? '',
+        journal: meta.journal ?? '',
+        volume: meta.volume ?? '',
+        issue: meta.issue ?? '',
+        pages: meta.pages ?? '',
+        publisher: meta.publisher ?? '',
+        url: meta.url ?? '',
         apaReference: meta.apa_reference ?? '',
         candidates: meta.candidates ?? [],
       };
@@ -339,6 +357,12 @@
         year: year && Number.isFinite(year) ? year : null,
         doi: metaModal.doi,
         abstract: metaModal.abstract,
+        journal: metaModal.journal,
+        volume: metaModal.volume,
+        issue: metaModal.issue,
+        pages: metaModal.pages,
+        publisher: metaModal.publisher,
+        url: metaModal.url,
       });
       const paperId = metaModal.paperId;
       metaModal = null;
@@ -782,6 +806,70 @@
                 <input
                   bind:value={metaModal.doi}
                   placeholder="10.1000/xyz123"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Journal
+              </label>
+              <input
+                bind:value={metaModal.journal}
+                placeholder="Journal of Example Research"
+                class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div class="grid grid-cols-3 gap-3">
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Volume
+                </label>
+                <input
+                  bind:value={metaModal.volume}
+                  placeholder="15"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Issue
+                </label>
+                <input
+                  bind:value={metaModal.issue}
+                  placeholder="2"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Pages
+                </label>
+                <input
+                  bind:value={metaModal.pages}
+                  placeholder="12-34"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Publisher
+                </label>
+                <input
+                  bind:value={metaModal.publisher}
+                  placeholder="Example Publishing"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Link / URL
+                </label>
+                <input
+                  bind:value={metaModal.url}
+                  placeholder="https://..."
                   class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
                 />
               </div>

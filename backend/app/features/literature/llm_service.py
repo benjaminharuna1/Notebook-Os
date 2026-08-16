@@ -26,15 +26,22 @@ _METHOD_HINTS = (
 METADATA_SYSTEM_PROMPT = (
     "You extract bibliographic metadata from the first page of a research paper. "
     "The page shows the journal name, author name(s), the paper's own title, the "
-    "publication year, a link/DOI and often an ISSN. Reply with STRICT JSON only, "
-    'using exactly these keys: "title" (string), "authors" (array of strings in '
-    '"Family, Given" format), "year" (integer or null), "doi" (string like '
-    '"10.1000/xyz" or null), "journal" (string or null), "issn" (string or null). '
-    '"title" must be the paper title, NOT the journal name. If a field cannot be '
-    "determined use null or an empty array."
+    "publication year, a link/DOI and often an ISSN, volume, issue, page range, "
+    "publisher and the abstract. Reply with STRICT JSON only, using exactly these "
+    'keys: "title" (string), "authors" (array of strings in "Family, Given" format), '
+    '"year" (integer or null), "doi" (string like "10.1000/xyz" or null), "journal" '
+    '(string or null), "volume" (string or null), "issue" (string or null), "pages" '
+    '(string like "12-34" or null), "publisher" (string or null), "issn" (string or '
+    'null), "abstract" (string — the paper\'s abstract text shown on the page, or '
+    'null if no abstract is present). "title" must be the paper title, NOT the '
+    "journal name. If a field cannot be determined use null or an empty array."
 )
 
-MAX_METADATA_TEXT_CHARS = 2500
+MAX_METADATA_TEXT_CHARS = 4000
+
+MAX_AI_PAPERS = 30
+MAX_AI_REF_LINES = 40
+AI_ABSTRACT_CAP = 300
 
 
 class LiteratureLLMService:
@@ -83,9 +90,10 @@ class LiteratureLLMService:
     # --- paper metadata extraction (second layer for enrichment) -------------
 
     def extract_paper_metadata(self, user_id: str, first_page: str, filename: str = "") -> dict:
-        """Asks the configured LLM to pull title/authors/year/DOI/journal/ISSN
-        off a paper's first page. Best-effort: returns ``{}`` when no model is
-        configured or the call fails, so enrichment always degrades gracefully.
+        """Asks the configured LLM to pull title/authors/year/DOI/journal,
+        volume/issue/pages/publisher/ISSN/abstract off a paper's first page.
+        Best-effort: returns ``{}`` when no model is configured or the call
+        fails, so enrichment always degrades gracefully.
         """
         first_page = (first_page or "").strip()
         if not first_page:
@@ -182,6 +190,17 @@ class LiteratureLLMService:
                 except Exception:
                     pass
         return {}
+
+    @staticmethod
+    def _as_list(parsed) -> List[dict]:
+        if isinstance(parsed, list):
+            return parsed
+        if isinstance(parsed, dict):
+            for key in ("pairs", "matches", "related", "result", "results", "edges"):
+                value = parsed.get(key)
+                if isinstance(value, list):
+                    return value
+        return []
 
     # --- paper literature-review entries ------------------------------------
 
@@ -430,3 +449,142 @@ class LiteratureLLMService:
             "gaps or contradictions. Base it strictly on the passages."
         )
         return system, user_prompt
+
+    # --- AI-judged graph edges (similarity + citations) ----------------------
+
+    def related_pairs(self, user_id: str, papers: List[dict]) -> List[dict]:
+        """Asks the configured LLM which paper pairs are topically related, so
+        the map gets similarity edges that embedding cosine similarity missed
+        (or when no embedding provider is configured). Best-effort: returns []
+        when no model is available or the call fails.
+
+        Returns edge-like rows: ``{"source", "target", "weight", "edge_type"}``.
+        """
+        papers = (papers or [])[:MAX_AI_PAPERS]
+        if len(papers) < 2:
+            return []
+        lines = []
+        for i, paper in enumerate(papers, 1):
+            title = (paper.get("title") or "Untitled").strip()
+            year = paper.get("year")
+            abstract = (paper.get("abstract") or "").strip().replace("\n", " ")
+            abstract = abstract[:AI_ABSTRACT_CAP]
+            meta = f"{title} ({year})." if year else f"{title}."
+            if abstract:
+                meta += f" Abstract: {abstract}"
+            lines.append(f"{i}. {meta}")
+        system = (
+            "You are a research assistant. Given a numbered list of research papers, "
+            'identify pairs of papers that are topically related — they share a research '
+            'area, method, subject matter or directly build on each other. Reply with '
+            'STRICT JSON only: an array of objects with keys "a" (integer paper index), '
+            '"b" (integer paper index, distinct from a) and "similarity" (number 0-1). '
+            "Return [] if no pairs are related."
+        )
+        user = "\n".join(lines) + "\n\nReturn the related pairs as JSON."
+        try:
+            raw = asyncio.run(self._call(user_id, system, user))
+            parsed = self._as_list(self._parse_json(raw))
+        except Exception:
+            return []
+        by_index = {i: p["id"] for i, p in enumerate(papers, 1)}
+        out: List[dict] = []
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            a, b = item.get("a"), item.get("b")
+            if a not in by_index or b not in by_index or a == b:
+                continue
+            sim = item.get("similarity")
+            try:
+                sim = float(sim) if sim is not None else 0.7
+            except (TypeError, ValueError):
+                sim = 0.7
+            weight = round(min(max(sim, 0.55), 1.0), 3)
+            out.append(
+                {
+                    "source": by_index[a],
+                    "target": by_index[b],
+                    "weight": weight,
+                    "edge_type": "similarity",
+                }
+            )
+        return out
+
+    def match_reference_lines(
+        self,
+        user_id: str,
+        refs: List[dict],
+        papers: List[dict],
+    ) -> List[dict]:
+        """Asks the configured LLM to match bibliography lines that the fuzzy
+        title matcher could not resolve against the project's papers. Best-
+        effort: returns [] when no model is available or the call fails.
+
+        ``refs`` is a list of ``{"paper_id", "raw_ref"}``. Returns matched rows
+        shaped like ``save_references`` expects.
+        """
+        refs = (refs or [])[:MAX_AI_REF_LINES]
+        papers = (papers or [])[:MAX_AI_PAPERS]
+        if not refs or len(papers) < 2:
+            return []
+        paper_lines = []
+        for i, p in enumerate(papers, 1):
+            line = f"{i}. {(p.get('title') or 'Untitled').strip()}"
+            authors = (p.get("authors") or [])[:3]
+            if authors:
+                line += f" — {', '.join(authors)}"
+            if p.get("year"):
+                line += f", {p['year']}"
+            paper_lines.append(line)
+        ref_lines = [f"[{i}] {r['raw_ref']}" for i, r in enumerate(refs, 1)]
+        system = (
+            "You match bibliography reference lines to a numbered list of candidate "
+            "papers. Decide which reference lines cite one of the listed papers — an "
+            "exact title match, or a plausible match despite abbreviations, initials "
+            "or minor garbling (OCR errors) still counts. Reply with STRICT JSON only: "
+            'an array of objects with keys "ref_index" (integer), "paper_index" '
+            '(integer) and "confidence" (number 0-1). Return [] if none of the lines '
+            "cite a listed paper. Do not invent matches."
+        )
+        user = (
+            "Papers:\n"
+            + "\n".join(paper_lines)
+            + "\n\nReference lines:\n"
+            + "\n".join(ref_lines)
+            + "\n\nReturn the matches as JSON."
+        )
+        try:
+            raw = asyncio.run(self._call(user_id, system, user))
+            parsed = self._as_list(self._parse_json(raw))
+        except Exception:
+            return []
+        by_paper = {i: p["id"] for i, p in enumerate(papers, 1)}
+        out: List[dict] = []
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            ri = item.get("ref_index")
+            pi = item.get("paper_index")
+            if not isinstance(ri, int) or not 1 <= ri <= len(refs):
+                continue
+            if pi not in by_paper:
+                continue
+            ref = refs[ri - 1]
+            if ref["paper_id"] == by_paper[pi]:
+                continue
+            conf = item.get("confidence")
+            try:
+                conf = float(conf) if conf is not None else 0.7
+            except (TypeError, ValueError):
+                conf = 0.7
+            confidence = round(min(max(conf, 0.5), 1.0), 3)
+            out.append(
+                {
+                    "paper_id": ref["paper_id"],
+                    "raw_ref": ref["raw_ref"],
+                    "matched_paper_id": by_paper[pi],
+                    "confidence": confidence,
+                }
+            )
+        return out

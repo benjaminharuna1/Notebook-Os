@@ -107,6 +107,11 @@ class LiteratureService:
             cur.execute("ALTER TABLE documents ADD COLUMN metadata_candidates TEXT")
         except Exception:
             pass
+        for column in ("pages", "journal", "volume", "issue", "publisher", "url"):
+            try:
+                cur.execute(f"ALTER TABLE documents ADD COLUMN {column} TEXT")
+            except Exception:
+                pass
         self.db.commit()
 
     # --- papers -------------------------------------------------------------
@@ -114,7 +119,8 @@ class LiteratureService:
     def papers(self, user_id: str, project_id: str) -> List[dict]:
         rows = self.db.execute(
             """SELECT id, title, author, year, doi, abstract, verification_status,
-                      apa_reference, authors, metadata_user_edited, filename
+                      apa_reference, authors, metadata_user_edited, filename,
+                      journal, volume, issue, pages, publisher, url
                FROM documents
                WHERE user_id = ? AND project_id = ?
                ORDER BY title COLLATE NOCASE""",
@@ -146,6 +152,12 @@ class LiteratureService:
             "authors": authors,
             "metadata_user_edited": bool(row["metadata_user_edited"]),
             "filename": row["filename"] if "filename" in row.keys() else None,
+            "journal": row["journal"] if "journal" in row.keys() else None,
+            "volume": row["volume"] if "volume" in row.keys() else None,
+            "issue": row["issue"] if "issue" in row.keys() else None,
+            "pages": row["pages"] if "pages" in row.keys() else None,
+            "publisher": row["publisher"] if "publisher" in row.keys() else None,
+            "url": row["url"] if "url" in row.keys() else None,
         }
 
     # --- editable literature entries ----------------------------------------
@@ -370,7 +382,8 @@ class LiteratureService:
         row = self.db.execute(
             """SELECT id, title, author, year, doi, abstract, verification_status,
                       apa_reference, authors, metadata_user_edited, file_type,
-                      extracted_doi, metadata_candidates
+                      extracted_doi, metadata_candidates,
+                      journal, volume, issue, pages, publisher, url
                FROM documents
                WHERE id = ? AND user_id = ? AND project_id = ?""",
             (paper_id, user_id, project_id),
@@ -399,6 +412,12 @@ class LiteratureService:
             "year": paper["year"],
             "doi": paper["doi"],
             "abstract": paper["abstract"],
+            "journal": paper["journal"],
+            "volume": paper["volume"],
+            "issue": paper["issue"],
+            "pages": paper["pages"],
+            "publisher": paper["publisher"],
+            "url": paper["url"],
             "apa_reference": paper["apa_reference"] or LiteratureService.apa_reference(paper),
             "verification_status": paper["verification_status"],
             "metadata_user_edited": paper["metadata_user_edited"],
@@ -422,6 +441,12 @@ class LiteratureService:
             "year": record.get("year"),
             "doi": record.get("doi"),
             "abstract": record.get("abstract"),
+            "journal": record.get("journal") or record.get("container_title"),
+            "volume": record.get("volume"),
+            "issue": record.get("issue"),
+            "pages": record.get("pages"),
+            "publisher": record.get("publisher"),
+            "url": record.get("url"),
         }
         updated = self.update_metadata(paper_id, user_id, project_id, fields)
         if updated is None:
@@ -448,7 +473,8 @@ class LiteratureService:
         paper = self.get_metadata(paper_id, user_id, project_id)
         if paper is None:
             return None
-        for key in ("authors", "year", "doi", "abstract", "title"):
+        for key in ("authors", "year", "doi", "abstract", "title", "journal",
+                    "volume", "issue", "pages", "publisher", "url"):
             if key not in fields:
                 continue
             value = fields[key]
@@ -457,12 +483,10 @@ class LiteratureService:
                 paper["authors"] = cleaned
             elif key == "title":
                 paper["title"] = (value or "").strip() or paper["title"]
-            elif key == "doi":
-                paper["doi"] = (value or "").strip() or None
-            elif key == "abstract":
-                paper["abstract"] = (value or "").strip() or None
-            else:
+            elif key == "year":
                 paper["year"] = value
+            else:
+                paper[key] = (value or "").strip() or None
 
         apa = self.apa_reference(
             {
@@ -471,12 +495,19 @@ class LiteratureService:
                 "year": paper["year"],
                 "doi": paper["doi"],
                 "authors": paper["authors"],
+                "journal": paper.get("journal"),
+                "volume": paper.get("volume"),
+                "issue": paper.get("issue"),
+                "pages": paper.get("pages"),
+                "publisher": paper.get("publisher"),
+                "url": paper.get("url"),
             }
         )
         self.db.execute(
             """UPDATE documents
                SET title = ?, authors = ?, year = ?, doi = ?, abstract = ?,
-                   apa_reference = ?, verification_status = NULL,
+                   journal = ?, volume = ?, issue = ?, pages = ?, publisher = ?,
+                   url = ?, apa_reference = ?, verification_status = NULL,
                    metadata_user_edited = 1
                WHERE id = ?""",
             (
@@ -485,6 +516,12 @@ class LiteratureService:
                 paper["year"],
                 paper["doi"],
                 paper["abstract"],
+                paper.get("journal"),
+                paper.get("volume"),
+                paper.get("issue"),
+                paper.get("pages"),
+                paper.get("publisher"),
+                paper.get("url"),
                 apa,
                 paper_id,
             ),
@@ -750,14 +787,20 @@ class LiteratureService:
         except (TypeError, ValueError):
             year = None
         journal = (fields.get("journal") or "").strip() or None
+        abstract = (fields.get("abstract") or "").strip() or None
         return {
             "source": "ai",
             "doi": doi,
             "title": title,
             "authors": authors,
             "year": year,
-            "abstract": None,
-            "container_title": journal,
+            "abstract": abstract,
+            "journal": journal,
+            "volume": (fields.get("volume") or "").strip() or None,
+            "issue": (fields.get("issue") or "").strip() or None,
+            "pages": (fields.get("pages") or "").strip() or None,
+            "publisher": (fields.get("publisher") or "").strip() or None,
+            "url": (fields.get("url") or "").strip() or None,
         }
 
     @staticmethod
@@ -778,6 +821,13 @@ class LiteratureService:
             paper["abstract"] = (
                 metadata_sources.strip_xml(record.get("abstract")) or paper.get("abstract")
             )
+            journal = record.get("journal") or record.get("container_title")
+            paper["journal"] = (journal or "").strip() or paper.get("journal")
+            paper["volume"] = (record.get("volume") or "").strip() or paper.get("volume")
+            paper["issue"] = (record.get("issue") or "").strip() or paper.get("issue")
+            paper["pages"] = (record.get("pages") or "").strip() or paper.get("pages")
+            paper["publisher"] = (record.get("publisher") or "").strip() or paper.get("publisher")
+            paper["url"] = (record.get("url") or "").strip() or paper.get("url")
             if record.get("title"):
                 paper["title"] = record["title"]
 
@@ -859,8 +909,9 @@ class LiteratureService:
         self.db.execute(
             """UPDATE documents
                SET title = ?, year = ?, doi = ?, abstract = ?, authors = ?,
-                   verification_status = ?, apa_reference = ?, extracted_doi = ?,
-                   metadata_candidates = ?
+                   journal = ?, volume = ?, issue = ?, pages = ?, publisher = ?,
+                   url = ?, verification_status = ?, apa_reference = ?,
+                   extracted_doi = ?, metadata_candidates = ?
                WHERE id = ?""",
             (
                 paper.get("title"),
@@ -868,6 +919,12 @@ class LiteratureService:
                 paper.get("doi"),
                 paper.get("abstract"),
                 json.dumps(paper.get("authors") or []),
+                paper.get("journal"),
+                paper.get("volume"),
+                paper.get("issue"),
+                paper.get("pages"),
+                paper.get("publisher"),
+                paper.get("url"),
                 paper.get("verification_status"),
                 self.apa_reference(paper),
                 paper.get("extracted_doi"),
@@ -895,9 +952,32 @@ class LiteratureService:
             ref = f"{shown} ({year}). {title}."
         else:
             ref = f"{title} ({year})."
-        doi = paper.get("doi")
+
+        journal = (paper.get("journal") or "").strip()
+        if journal:
+            ref += f" {journal}"
+            volume = (paper.get("volume") or "").strip()
+            issue = (paper.get("issue") or "").strip()
+            if volume:
+                ref += f", {volume}" + (f"({issue})" if issue else "")
+            elif issue:
+                ref += f" ({issue})"
+        pages = (paper.get("pages") or "").strip()
+        if pages:
+            ref += f", {pages}"
+        if journal or pages:
+            ref += "."
+
+        publisher = (paper.get("publisher") or "").strip()
+        if publisher and not journal:
+            ref += f" {publisher}."
+
+        doi = (paper.get("doi") or "").strip().rstrip(".,")
+        url = (paper.get("url") or "").strip().rstrip(".,")
         if doi:
             ref += f" https://doi.org/{doi}"
+        elif url:
+            ref += f" {url}"
         return ref
 
     # --- similarity edges ----------------------------------------------------
@@ -965,14 +1045,16 @@ class LiteratureService:
 
     # --- citation edges ------------------------------------------------------
 
-    def citation_edges(self, papers: List[dict]) -> Tuple[List[dict], List[dict]]:
+    def citation_edges(self, papers: List[dict]) -> Tuple[List[dict], List[dict], List[dict]]:
         by_id = {p["id"]: p for p in papers}
         edges: Dict[Tuple[str, str], float] = {}
         refs: List[dict] = []
+        unmatched: List[dict] = []
         for paper in papers:
             for line in self._reference_lines(paper["id"]):
                 match = self._match_title(line, by_id)
                 if not match:
+                    unmatched.append({"paper_id": paper["id"], "raw_ref": line})
                     continue
                 matched_id, score = match
                 if matched_id == paper["id"]:
@@ -992,7 +1074,7 @@ class LiteratureService:
             {"source": a, "target": b, "weight": weight, "edge_type": "citation"}
             for (a, b), weight in edges.items()
         ]
-        return edge_rows, refs
+        return edge_rows, refs, unmatched
 
     def save_references(self, refs: List[dict]) -> None:
         for ref in refs:
@@ -1052,6 +1134,61 @@ class LiteratureService:
             return None
         return best_id, best_score
 
+    # --- AI-judged edges -----------------------------------------------------
+
+    def _ai_edge_pass(
+        self,
+        user_id: str,
+        papers: List[dict],
+        unmatched: List[dict],
+        existing_edges: List[dict],
+    ) -> Tuple[List[dict], List[dict]]:
+        """LLM-judged similarity + citation edges that the embedding/fuzzy passes
+        missed. Best-effort: returns empty when no model is configured or the
+        calls fail, so the build never breaks on the LLM.
+        """
+        from app.features.literature.llm_service import LiteratureLLMService
+
+        llm = LiteratureLLMService(self.db)
+        if not llm.active_model(user_id):
+            return [], []
+        existing = {
+            (e["source"], e["target"], e["edge_type"]) for e in (existing_edges or [])
+        }
+        edge_rows: List[dict] = []
+        refs: List[dict] = []
+        try:
+            related = llm.related_pairs(user_id, papers)
+            for edge in related:
+                a, b = edge["source"], edge["target"]
+                if (a, b, "similarity") in existing or (b, a, "similarity") in existing:
+                    continue
+                existing.add((a, b, "similarity"))
+                edge_rows.append(edge)
+        except Exception:
+            pass
+        try:
+            matched = llm.match_reference_lines(user_id, unmatched, papers)
+            seen = set()
+            for ref in matched:
+                pair = tuple(sorted((ref["paper_id"], ref["matched_paper_id"])))
+                key = (pair[0], pair[1], "citation")
+                if key in existing or (pair[1], pair[0], "citation") in existing or pair in seen:
+                    continue
+                seen.add(pair)
+                refs.append(ref)
+                edge_rows.append(
+                    {
+                        "source": pair[0],
+                        "target": pair[1],
+                        "weight": ref["confidence"],
+                        "edge_type": "citation",
+                    }
+                )
+        except Exception:
+            pass
+        return edge_rows, refs
+
     # --- clustering + layout -------------------------------------------------
 
     @staticmethod
@@ -1100,11 +1237,17 @@ class LiteratureService:
         similarity = self.similarity_edges(user_id, papers)
 
         report(60, "Matching citations")
-        citations, refs = self.citation_edges(papers)
+        citations, refs, unmatched = self.citation_edges(papers)
         self.save_references(refs)
 
+        report(66, "AI similarity & citations")
+        ai_edges, ai_refs = self._ai_edge_pass(
+            user_id, papers, unmatched, similarity + citations
+        )
+        self.save_references(ai_refs)
+
         report(72, "Clustering")
-        edges = similarity + citations
+        edges = similarity + citations + ai_edges
         node_cluster = self.assign_clusters(papers, edges)
 
         report(80, "Computing layout")
