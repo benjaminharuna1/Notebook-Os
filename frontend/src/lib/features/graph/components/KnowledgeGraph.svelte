@@ -1,7 +1,13 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { streamConceptSummary } from '$lib/features/graph/api';
-  import type { ConceptSource, GraphResponse, TrackedConcept } from '$lib/features/graph/types';
+  import { clusterColor } from '$lib/features/graph/clusterColor';
+  import type {
+    ConceptSource,
+    ClusterInfo,
+    GraphResponse,
+    TrackedConcept,
+  } from '$lib/features/graph/types';
 
   let {
     graph,
@@ -10,6 +16,11 @@
     trackedOnly = false,
     aiMatches = [],
     projectId = '',
+    papersMode = false,
+    clusters = [],
+    focusNodeId = '',
+    onEditMeta = null,
+    onOpenPdf = null,
   }: {
     graph: GraphResponse | null;
     filter?: string | null;
@@ -17,11 +28,17 @@
     trackedOnly?: boolean | null;
     aiMatches?: string[] | null;
     projectId?: string | null;
+    papersMode?: boolean | null;
+    clusters?: ClusterInfo[] | null;
+    focusNodeId?: string | null;
+    onEditMeta?: ((nodeId: string) => void) | null;
+    onOpenPdf?: ((nodeId: string) => void) | null;
   } = $props();
 
   const safeFilter = $derived(String(filter ?? ''));
   const safeTracked = $derived((tracked ?? []) as TrackedConcept[]);
   const safeTrackedOnly = $derived(Boolean(trackedOnly));
+  const papersModeOn = $derived(Boolean(papersMode));
 
   interface SimNode {
     id: string;
@@ -30,12 +47,15 @@
     x: number;
     y: number;
     enter: boolean;
+    cluster?: string | null;
+    meta?: Record<string, any> | null;
   }
 
   interface SimEdge {
     source: string;
     target: string;
     weight: number;
+    edge_type?: string | null;
   }
 
   let layoutNodes = $state<SimNode[]>([]);
@@ -67,6 +87,7 @@
     const sel = selected;
     summary = { status: 'idle', text: '', sources: [] };
     if (!sel || !projectId) return;
+    if (papersModeOn) return;
     const label = untrack(() => layoutNodes.find((n) => n.id === sel)?.label ?? '');
     if (!label) return;
     const token = ++summaryToken;
@@ -104,6 +125,15 @@
   let firstLayout = true;
 
   $effect(() => {
+    const id = focusNodeId;
+    if (!id) return;
+    if (layoutNodes.some((n) => n.id === id)) {
+      selected = id;
+      highlighted = id;
+    }
+  });
+
+  $effect(() => {
     const g = graph;
     if (!g) {
       firstLayout = true;
@@ -128,11 +158,15 @@
       const weight = Number(n?.weight) || 0;
       const x = Number(n?.x);
       const y = Number(n?.y);
+      const cluster = n?.cluster ? String(n.cluster) : null;
+      const meta = n?.meta && typeof n.meta === 'object' ? (n.meta as Record<string, any>) : null;
       const hasPos = Number.isFinite(x) && Number.isFinite(y) && (x !== 0 || y !== 0);
       const existing = prevById.get(id);
       if (existing) {
         existing.label = label;
         existing.weight = weight;
+        existing.cluster = cluster ?? existing.cluster;
+        existing.meta = meta ?? existing.meta;
         if (hasPos) {
           existing.x = x;
           existing.y = y;
@@ -146,6 +180,8 @@
           x: hasPos ? x : W / 2 + (Math.random() - 0.5) * 140,
           y: hasPos ? y : H / 2 + (Math.random() - 0.5) * 140,
           enter: false,
+          cluster,
+          meta,
         });
       }
     }
@@ -153,7 +189,12 @@
     layoutNodes = next;
     layoutEdges = (g.edges ?? [])
       .filter((e) => e && e.source && e.target)
-      .map((e) => ({ source: e.source, target: e.target, weight: Number(e.weight) || 0 }));
+      .map((e) => ({
+        source: e.source,
+        target: e.target,
+        weight: Number(e.weight) || 0,
+        edge_type: e?.edge_type ? String(e.edge_type) : null,
+      }));
     maxNodeWeight = Math.max(1, ...layoutNodes.map((n) => n.weight));
     maxEdgeWeight = Math.max(1, ...layoutEdges.map((e) => e.weight));
 
@@ -336,11 +377,34 @@
     return 0.25;
   }
 
+  const clusterName = $derived.by(() => {
+    const m = new Map<string, string>();
+    for (const c of clusters ?? []) m.set(c?.id ?? '', c?.label ?? '');
+    return m;
+  });
+
+  function clusterLabel(id: string | null | undefined): string {
+    if (!id) return '';
+    return clusterName.get(id) ?? `Cluster ${id.replace(/^c/, '')}`;
+  }
+
   function nodeFill(n: SimNode): string {
     if (selected === n.id) return '#fbbf24';
+    if (papersModeOn && n.cluster) return clusterColor(n.cluster);
     if (matchQuery?.has(n.id)) return '#38bdf8';
     if (safeTrackedOnly && trackedMatchIds.has(n.id)) return '#f59e0b';
     return n.weight >= maxNodeWeight * 0.5 ? '#a5b4fc' : '#818cf8';
+  }
+
+  function edgeStroke(e: SimEdge): string {
+    if (e.edge_type === 'citation') return '#f59e0b';
+    if (e.edge_type === 'similarity') return '#38bdf8';
+    return '#94a3b8';
+  }
+
+  function edgeDash(e: SimEdge): string | null {
+    if (e.edge_type === 'similarity') return '4 3';
+    return null;
   }
 
   function labelFill(n: SimNode): string {
@@ -490,7 +554,9 @@
 
 {#if !graph || (graph.nodes?.length ?? 0) === 0}
   <div class="flex h-full min-h-[420px] items-center justify-center rounded-2xl border border-slate-800 bg-[#0b1120] px-4 text-center text-slate-400">
-    No knowledge graph yet — upload and index documents in this project.
+    {papersModeOn
+      ? 'No literature map yet — build one from your indexed documents.'
+      : 'No knowledge graph yet — upload and index documents in this project.'}
   </div>
 {:else}
   <div
@@ -524,10 +590,11 @@
             y1={nodePos.get(e.source)?.y ?? 0}
             x2={nodePos.get(e.target)?.x ?? 0}
             y2={nodePos.get(e.target)?.y ?? 0}
-            stroke="#94a3b8"
+            stroke={edgeStroke(e)}
             stroke-linecap="round"
             stroke-width={0.5 + (e.weight / maxEdgeWeight) * 2.5}
             stroke-opacity={edgeDim(e)}
+            stroke-dasharray={edgeDash(e)}
           />
         {/each}
 
@@ -627,7 +694,18 @@
       {#if nodeById(highlighted)}
         {@const hn = nodeById(highlighted)!}
         <p class="font-medium">{hn.label}</p>
-        <p class="mt-0.5 text-slate-400">{hn.weight} chunks · {degreeOf.get(hn.id) ?? 0} connections</p>
+        {#if papersModeOn}
+          <p class="mt-0.5 text-slate-400">
+            {hn.meta?.year ?? 'n.d.'} · {degreeOf.get(hn.id) ?? 0} connections
+          </p>
+          {#if hn.meta?.apa_reference}
+            <p class="mt-1 max-w-56 text-[10px] leading-snug text-slate-500">
+              {hn.meta.apa_reference}
+            </p>
+          {/if}
+        {:else}
+          <p class="mt-0.5 text-slate-400">{hn.weight} chunks · {degreeOf.get(hn.id) ?? 0} connections</p>
+        {/if}
       {/if}
     </div>
 
@@ -636,9 +714,20 @@
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
             <p class="truncate text-sm font-medium text-slate-100">{selectedNode.label}</p>
-            <p class="mt-0.5 text-xs text-slate-400">
-              {selectedNode.weight} chunks · {degreeOf.get(selectedNode.id) ?? 0} connections
-            </p>
+            {#if papersModeOn}
+              <p class="mt-0.5 text-xs text-slate-400">
+                {selectedNode.meta?.year ?? 'n.d.'} · {selectedNode.meta?.authors?.length ?? 0} authors · {degreeOf.get(selectedNode.id) ?? 0} connections
+              </p>
+              {#if selectedNode.cluster && clusterLabel(selectedNode.cluster)}
+                <p class="mt-0.5 text-[11px] font-medium" style="color: {clusterColor(selectedNode.cluster)}">
+                  {clusterLabel(selectedNode.cluster)}
+                </p>
+              {/if}
+            {:else}
+              <p class="mt-0.5 text-xs text-slate-400">
+                {selectedNode.weight} chunks · {degreeOf.get(selectedNode.id) ?? 0} connections
+              </p>
+            {/if}
           </div>
           <button
             onclick={() => (selected = null)}
@@ -646,6 +735,55 @@
             aria-label="Dismiss selection"
           >✕</button>
         </div>
+        {#if papersModeOn && selectedNode.meta}
+          {@const meta = selectedNode.meta}
+          <div class="mt-2 space-y-1.5 border-t border-white/10 pt-2 text-xs text-slate-300">
+            {#if meta.authors?.length}
+              <p class="leading-snug"><span class="text-slate-500">Authors: </span>{meta.authors.join('; ')}</p>
+            {/if}
+            {#if meta.year}
+              <p><span class="text-slate-500">Year: </span>{meta.year}</p>
+            {/if}
+            {#if meta.verification_status}
+              <p>
+                {#if meta.verification_status === 'verified'}
+                  <span class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300">✓ Verified metadata</span>
+                {:else}
+                  <span class="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">⚠ Unverified metadata</span>
+                {/if}
+              </p>
+            {/if}
+            {#if meta.doi}
+              <p class="break-all"><span class="text-slate-500">DOI: </span>{meta.doi}</p>
+            {/if}
+            {#if meta.abstract}
+              <p class="leading-snug"><span class="text-slate-500">Abstract: </span>{meta.abstract}</p>
+            {/if}
+            {#if meta.apa_reference}
+              <p class="leading-snug"><span class="text-slate-500">APA: </span>{meta.apa_reference}</p>
+            {/if}
+          </div>
+          {#if onEditMeta || onOpenPdf}
+            <div class="mt-2 flex gap-2 border-t border-white/10 pt-2">
+              {#if onOpenPdf}
+                <button
+                  onclick={() => onOpenPdf(selectedNode.id)}
+                  class="flex-1 rounded-lg bg-indigo-500/90 px-2 py-1.5 text-xs font-medium text-white hover:bg-indigo-400"
+                >
+                  Open PDF
+                </button>
+              {/if}
+              {#if onEditMeta}
+                <button
+                  onclick={() => onEditMeta(selectedNode.id)}
+                  class="flex-1 rounded-lg border border-white/15 px-2 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/10"
+                >
+                  Edit metadata
+                </button>
+              {/if}
+            </div>
+          {/if}
+        {/if}
         {#if selectedNeighbors.length}
           <p class="mb-1 mt-2 text-[10px] font-medium uppercase tracking-wider text-slate-500">
             Connected to
@@ -664,6 +802,7 @@
             {/each}
           </ul>
         {/if}
+        {#if !papersModeOn}
         <div class="mt-2 border-t border-white/10 pt-2">
           <p class="mb-1 text-[10px] font-medium uppercase tracking-wider text-slate-500">
             What the papers say
@@ -691,6 +830,7 @@
             </ul>
           {/if}
         </div>
+        {/if}
       </div>
     {/if}
   </div>

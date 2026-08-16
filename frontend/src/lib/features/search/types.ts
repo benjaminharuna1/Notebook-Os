@@ -5,6 +5,7 @@ export interface SearchResult {
   document_id: string;
   document_title: string;
   page_number: number;
+  source?: 'semantic' | 'keyword';
 }
 
 export interface SearchResponse {

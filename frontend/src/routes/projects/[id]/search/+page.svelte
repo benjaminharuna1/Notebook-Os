@@ -47,6 +47,15 @@
             >
               {result.document_title}
             </a>
+            {#if result.source}
+              <span
+                class="rounded px-1 py-px font-medium {result.source === 'keyword'
+                  ? 'bg-amber-100 text-amber-700'
+                  : 'bg-sky-100 text-sky-700'}"
+              >
+                {result.source}
+              </span>
+            {/if}
             <span>Score: {result.score.toFixed(2)}</span>
             {#if result.page_number}
               <span>Page {result.page_number}</span>

@@ -7,6 +7,7 @@ class SearchRequest(BaseModel):
     top_k: int = 5
     document_ids: Optional[List[str]] = None
     project_id: Optional[str] = None
+    include_keyword: bool = True
 
 
 class SearchResult(BaseModel):
@@ -16,6 +17,7 @@ class SearchResult(BaseModel):
     document_id: str
     document_title: str
     page_number: int
+    source: str = "semantic"
 
 
 class SearchResponse(BaseModel):

@@ -134,6 +134,10 @@ class IngestionService:
                 (doc_id,),
             )
             conn.commit()
+
+            # Keep the literature map in sync: every newly indexed paper
+            # triggers a background rebuild for its project.
+            self._maybe_build_literature(user_id, row["project_id"])
         except Exception as exc:
             message = getattr(exc, "detail", None) or str(exc)
             logger.exception("ingestion pipeline failed for %s", doc_id)
@@ -201,6 +205,28 @@ class IngestionService:
         )
 
     # --- helpers ---------------------------------------------------------
+
+    @staticmethod
+    def _maybe_build_literature(user_id: str, project_id: str | None) -> None:
+        """Kicks off a background literature map rebuild after a paper indexes.
+
+        Local imports avoid an import cycle; failures are logged and never fail
+        the ingestion job itself.
+        """
+        if not project_id:
+            return
+        try:
+            from app.core.database import get_sqlite_connection
+            from app.features.literature.jobs import start_build
+            from app.features.literature.service import LiteratureService
+
+            start_build(
+                lambda: LiteratureService(get_sqlite_connection()),
+                user_id,
+                project_id,
+            )
+        except Exception:
+            logger.exception("literature auto-build failed to start for project %s", project_id)
 
     def _require_project(self, user_id: str, project_id: str | None) -> str | None:
         if not project_id:

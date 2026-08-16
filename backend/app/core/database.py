@@ -137,7 +137,32 @@ def init_sqlite_db():
             fingerprint TEXT NOT NULL,
             prefs_key   TEXT NOT NULL,
             is_favourite INTEGER NOT NULL DEFAULT 0,
+            map_type    TEXT DEFAULT 'concepts',
             created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS paper_references (
+            id               TEXT PRIMARY KEY,
+            paper_id         TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            raw_ref          TEXT NOT NULL,
+            matched_paper_id TEXT,
+            confidence       REAL
+        );
+
+        CREATE TABLE IF NOT EXISTS literature_entries (
+            paper_id           TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+            user_id            TEXT NOT NULL,
+            project_id         TEXT NOT NULL,
+            citation           TEXT,
+            research_objective TEXT,
+            methodology        TEXT,
+            key_findings       TEXT,
+            limitations        TEXT,
+            relevance          TEXT,
+            apa_reference      TEXT,
+            auto_generated     INTEGER NOT NULL DEFAULT 0,
+            user_edited        TEXT,
+            updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP
         );
     """)
 
@@ -146,6 +171,15 @@ def init_sqlite_db():
         ("ALTER TABLE documents ADD COLUMN error TEXT", None),
         ("ALTER TABLE documents ADD COLUMN project_id TEXT", None),
         ("ALTER TABLE chat_sessions ADD COLUMN project_id TEXT", None),
+        ("ALTER TABLE documents ADD COLUMN year INTEGER", None),
+        ("ALTER TABLE documents ADD COLUMN doi TEXT", None),
+        ("ALTER TABLE documents ADD COLUMN abstract TEXT", None),
+        ("ALTER TABLE documents ADD COLUMN verification_status TEXT", None),
+        ("ALTER TABLE documents ADD COLUMN apa_reference TEXT", None),
+        ("ALTER TABLE documents ADD COLUMN authors TEXT", None),
+        ("ALTER TABLE documents ADD COLUMN metadata_user_edited INTEGER DEFAULT 0", None),
+        ("ALTER TABLE graph_history ADD COLUMN map_type TEXT DEFAULT 'concepts'", None),
+        ("ALTER TABLE literature_entries ADD COLUMN user_edited TEXT", None),
     ]
     for statement, _ in migrations:
         try:
@@ -158,6 +192,10 @@ def init_sqlite_db():
         "CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id)",
         "CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id)",
         "CREATE INDEX IF NOT EXISTS idx_graph_history_lookup ON graph_history(user_id, project_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_graph_history_map ON graph_history(user_id, project_id, map_type, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_paper_references_paper ON paper_references(paper_id)",
+        "CREATE INDEX IF NOT EXISTS idx_paper_references_matched ON paper_references(matched_paper_id)",
+        "CREATE INDEX IF NOT EXISTS idx_literature_entries_project ON literature_entries(user_id, project_id)",
     ):
         try:
             cursor.execute(statement)

@@ -49,6 +49,22 @@ class DocumentRepository:
 
     def delete(self, document_id: str, user_id: str):
         cursor = self.db.cursor()
+        # Paper-level literature data is removed with the paper (explicit deletes
+        # also cover rows where the deleted paper is a cited match).
+        for statement, params in (
+            (
+                "DELETE FROM literature_entries WHERE paper_id = ?",
+                (document_id,),
+            ),
+            (
+                "DELETE FROM paper_references WHERE paper_id = ? OR matched_paper_id = ?",
+                (document_id, document_id),
+            ),
+        ):
+            try:
+                cursor.execute(statement, params)
+            except self.db.DatabaseError:
+                pass  # tables may not exist on very old databases
         cursor.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
         cursor.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (document_id, user_id))
         self.db.commit()

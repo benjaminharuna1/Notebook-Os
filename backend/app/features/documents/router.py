@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import FileResponse
 
 from app.core.dependencies import get_current_user, get_db
 from app.features.documents.service import DocumentService
@@ -50,3 +51,15 @@ async def delete_document(
     collection_name = resolve_collection_name(user_settings)
     service = DocumentService(db)
     return service.delete_document(document_id, current_user["id"], collection_name=collection_name)
+
+
+@router.get("/projects/{project_id}/documents/{document_id}/file")
+async def get_document_file(
+    project_id: str,
+    document_id: str,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    service = DocumentService(db)
+    path, media_type = service.get_document_file(document_id, current_user["id"], project_id)
+    return FileResponse(path=path, media_type=media_type)

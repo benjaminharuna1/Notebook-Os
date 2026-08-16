@@ -16,6 +16,7 @@
     if (p.includes('/search')) return 'search';
     if (p.includes('/chat')) return 'chat';
     if (p.includes('/graph')) return 'graph';
+    if (p.includes('/literature')) return 'literature';
     return 'library';
   });
 
@@ -70,6 +71,14 @@
             : 'text-slate-500 hover:text-slate-800'}"
         >
           Graph
+        </a>
+        <a
+          href="/projects/{projectId}/literature"
+          class="pb-1 {active === 'literature'
+            ? 'border-b-2 border-indigo-600 font-medium text-indigo-600'
+            : 'text-slate-500 hover:text-slate-800'}"
+        >
+          Literature
         </a>
       </nav>
     </div>
