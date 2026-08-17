@@ -133,13 +133,16 @@ class GraphLLMService:
 
         system = (
             "You are a research summarizer. Summarize what the provided passages "
-            "from research papers say about a single topic."
+            "from research papers say about a single topic. Use APA 7th edition "
+            "citations: include parenthetical citations (Author, Year) for every "
+            "factual claim drawn from the sources."
         )
         user_prompt = (
             f'Topic: "{label}"\n\n'
             "Passages:\n"
             + "\n\n".join(context)
             + f'\n\nWrite a concise summary (3-5 sentences) of what the papers say about "{label}". '
+            "Cite sources using parenthetical references (Author, Year) where appropriate. "
             "Base it strictly on the passages — do not invent facts."
         )
         return system, user_prompt

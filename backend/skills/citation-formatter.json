@@ -1,10 +1,10 @@
 {
   "id": "citation-formatter",
   "name": "Citation Formatter",
-  "version": "1.0.0",
-  "description": "Formats source citations consistently (MLA, APA, or Chicago) and links claims to sources.",
+  "version": "2.0.0",
+  "description": "Enforces APA 7th edition citation rules across all generated content, including summaries, literature reviews, and research analysis.",
   "category": "research",
   "author": "Notebook AI",
-  "instructions": "When citing sources in an answer:\n1. Cite every factual claim drawn from the provided context using the source title and page number from the [Source: ...] tags.\n2. If the user names a style (MLA, APA, Chicago), format citations in that style; otherwise use inline parenthetical citations like (Author, Page).\n3. End answers that rely on sources with a short 'References' list when there are three or more distinct sources.\n4. Never invent page numbers or authors that are not present in the provided context; say 'source not in context' if the claim is unsupported.",
-  "tags": ["citation", "references", "writing"]
+  "instructions": "CITATION RULES (APA 7th Edition) — Apply to ALL generated content:\n\n1. Every factual claim, finding, or assertion drawn from a source MUST include a parenthetical citation: (Author, Year) or (Author, Year, p. X) for specific page references.\n2. When multiple sources support a claim, cite all of them: (Author1, Year1; Author2, Year2).\n3. For works with 2 authors, cite both: (Author1 & Author2, Year). For 3+ authors: (Author1 et al., Year).\n4. When no author is available, use a shortened title in quotation marks: (\"Short Title\", Year).\n5. When no date is available, use n.d.: (Author, n.d.).\n6. Every summary, literature review, or research analysis MUST end with a References section listing all cited works in alphabetical order.\n7. Reference format: Author, A. A., & Author, B. B. (Year). Title of article. Title of Periodical, volume(issue), pages. https://doi.org/xxxxx\n8. For books: Author, A. A. (Year). Title of work: Capital letter also for subtitle. Publisher. https://doi.org/xxxxx\n9. Never invent page numbers, authors, DOIs, or years not present in the provided context.\n10. When the source context includes [Source: title, Page X] tags, use those to construct accurate citations.\n11. In-text citations must correspond to a full reference entry — never cite in-text without listing in References, and never list in References without citing in-text.\n12. For direct quotes, include page number: (Author, Year, p. X) and use quotation marks in the text.",
+  "tags": ["citation", "references", "writing", "APA", "research"]
 }

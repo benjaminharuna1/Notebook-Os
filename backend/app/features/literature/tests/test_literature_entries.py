@@ -273,7 +273,7 @@ def test_metadata_update_preserves_user_overridden_apa():
     entry = service.get_entry("p1", "u1")
     assert entry["apa_reference"] == "My custom APA string"  # user override kept
     assert entry["citation"] == "Smith, 2024"  # derived citation refreshed
-    assert "2024" in meta["apa_reference"]
+    assert meta["apa_reference"] == "My custom APA string"  # metadata also reflects user override
 
 
 def test_enrich_skips_user_edited_metadata():

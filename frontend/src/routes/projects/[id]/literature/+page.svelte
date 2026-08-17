@@ -10,6 +10,7 @@
     exportLiteratureMap,
     getLiteratureEntries,
     getLiteratureMap,
+    getLiteratureStatus,
     getPaperMetadata,
     regenerateLiteratureEntry,
     searchPapers,
@@ -51,6 +52,7 @@
   let searchOpen = $state(false);
   let searchError = $state('');
   let focusNodeId = $state('');
+  let systemWarnings = $state<string[]>([]);
 
   let drafts = $state<Record<string, Record<string, string>>>({});
   let savingId = $state<string | null>(null);
@@ -111,9 +113,21 @@
     searchResults = [];
     searchOpen = false;
     focusNodeId = '';
+    systemWarnings = [];
     loadMap();
     loadEntries();
+    loadStatus();
   });
+
+  async function loadStatus() {
+    if (!projectId) return;
+    try {
+      const status = await getLiteratureStatus(projectId);
+      systemWarnings = status.warnings ?? [];
+    } catch {
+      systemWarnings = ['Could not check system status.'];
+    }
+  }
 
   async function loadMap() {
     if (!projectId) return;
@@ -632,6 +646,16 @@
     {#if tableError && view === 'table'}
       <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
         {tableError}
+      </div>
+    {/if}
+    {#if systemWarnings.length > 0}
+      <div class="mt-3 space-y-2">
+        {#each systemWarnings as warning}
+          <div class="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <span class="mt-0.5 shrink-0 text-sm">⚠</span>
+            <span>{warning}</span>
+          </div>
+        {/each}
       </div>
     {/if}
   </div>

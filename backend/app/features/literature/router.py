@@ -32,6 +32,16 @@ def _cluster_label(cluster_id: str) -> str:
     return f"Cluster {cluster_id[1:]}" if cluster_id.startswith("c") else cluster_id
 
 
+@router.get("/projects/{project_id}/literature/status")
+async def get_literature_status(
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    service = LiteratureService(db)
+    return service.system_status(current_user["id"])
+
+
 @router.post("/projects/{project_id}/literature/build", response_model=LiteratureBuildJob)
 async def build_literature_map(
     project_id: str,
@@ -70,6 +80,7 @@ async def get_literature_entries(
     db=Depends(get_db),
 ):
     service = LiteratureService(db)
+    service.recompute_all_apa(current_user["id"], project_id)
     return service.entries(current_user["id"], project_id)
 
 
@@ -280,6 +291,50 @@ async def summarize_literature_cluster(
                     "snippet": source["content"][:140],
                 }
                 for source in sources
+            ]
+            yield f"data: {json.dumps({'type': 'sources', 'sources': source_data})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as exc:
+            detail = getattr(exc, "detail", None) or str(exc)
+            yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/projects/{project_id}/literature/entries/{paper_id}/summarize")
+async def summarize_literature_paper(
+    project_id: str,
+    paper_id: str,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    service = LiteratureLLMService(db)
+
+    async def generate():
+        try:
+            sources = service.paper_summary_sources(
+                current_user["id"], project_id, paper_id
+            )
+            if not sources:
+                raise ValueError("No content found for this paper")
+            model = service.active_model(current_user["id"])
+            if not model:
+                raise ValueError("No active model configured — pick one in Settings")
+            provider = service.model_service.get_provider(model, current_user["id"])
+            paper_title = sources[0]["title"] if sources else "this paper"
+            system, prompt = service.paper_summary_prompt(paper_title, sources)
+            async for chunk in provider.stream_chat(
+                system, [{"role": "user", "content": prompt}]
+            ):
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+            source_data = [
+                {
+                    "title": s["title"],
+                    "page": s["page"],
+                    "doc_id": s["document_id"],
+                    "snippet": s["content"][:140],
+                }
+                for s in sources
             ]
             yield f"data: {json.dumps({'type': 'sources', 'sources': source_data})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"

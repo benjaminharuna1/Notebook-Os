@@ -5,6 +5,7 @@ from app.core.dependencies import get_current_user, get_db
 from app.features.documents.schemas import DocumentBatchDelete
 from app.features.documents.service import DocumentService
 from app.features.embedding.service import resolve_collection_name
+from app.features.literature.service import LiteratureService
 from app.features.settings.service import SettingsService
 
 router = APIRouter(tags=["documents"])
@@ -21,6 +22,8 @@ async def list_documents(
     db=Depends(get_db),
 ):
     service = DocumentService(db)
+    if project_id:
+        LiteratureService(db).recompute_all_apa(current_user["id"], project_id)
     return service.list_documents(
         current_user["id"],
         page=page,

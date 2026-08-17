@@ -396,6 +396,9 @@ class LiteratureLLMService:
             "body text for each field.\n"
             "- If the paper genuinely does not address a field, write 'Not stated in the "
             "paper.' — do not guess.\n"
+            "- Include parenthetical citations (Author, Year) when referencing specific "
+            "claims or findings from the paper. Use the author names and year from the "
+            "paper's metadata.\n"
             "- No markdown code fences, no commentary before or after the JSON, no extra keys."
         )
         user_prompt = (
@@ -601,7 +604,8 @@ class LiteratureLLMService:
             context.append(f"[Source: {source['title']}{page}]\n{source['content']}")
         system = (
             "You are a research summarizer. Summarize what a cluster of research "
-            "papers says about its shared theme."
+            "papers says about its shared theme. Use APA 7th edition citations: "
+            "include parenthetical citations (Author, Year) for every factual claim."
         )
         user_prompt = (
             f'Theme: "{cluster_label}"\n\n'
@@ -609,7 +613,59 @@ class LiteratureLLMService:
             + "\n\n".join(context)
             + f'\n\nWrite a concise summary (3-5 sentences) of the theme "{cluster_label}": '
             "what these papers contribute, their shared methods or findings, and any "
-            "gaps or contradictions. Base it strictly on the passages."
+            "gaps or contradictions. Cite sources using parenthetical references "
+            "(Author, Year) where appropriate. Base it strictly on the passages."
+        )
+        return system, user_prompt
+
+    # --- per-paper summary (for graph popup) ---------------------------------
+
+    def paper_summary_sources(self, user_id: str, project_id: str, paper_id: str) -> List[dict]:
+        """Gathers text chunks for a specific paper to use in summary generation."""
+        rows = self.db.execute(
+            """SELECT c.document_id, c.content, c.page_number, d.title AS title
+               FROM chunks c
+               JOIN documents d ON d.id = c.document_id
+               WHERE d.user_id = ? AND d.project_id = ? AND c.document_id = ?
+                 AND c.content != ''
+               ORDER BY c.page_number""",
+            (user_id, project_id, paper_id),
+        ).fetchall()
+        selected = []
+        step = max(1, len(rows) // self.CHUNKS_PER_PAPER) if rows else 1
+        for i in range(0, len(rows), step):
+            selected.append(rows[i])
+            if len(selected) >= self.CHUNKS_PER_PAPER:
+                break
+        return [
+            {
+                "document_id": row["document_id"],
+                "title": row["title"],
+                "page": row["page_number"],
+                "content": row["content"],
+            }
+            for row in selected
+        ]
+
+    def paper_summary_prompt(self, paper_title: str, sources: List[dict]) -> Tuple[str, str]:
+        """Builds a prompt to generate a concise summary of a single paper with citations."""
+        context = []
+        for source in sources:
+            page = f", Page {source['page']}" if source.get("page") else ""
+            context.append(f"[Source: {source['title']}{page}]\n{source['content']}")
+        system = (
+            "You are a research analyst summarizing a single academic paper. "
+            "Provide a concise, accurate summary grounded in the provided excerpts. "
+            "Use parenthetical citations (Author, Year) or (Author, Year, p. X) when "
+            "referencing specific claims. Follow APA 7th edition citation rules."
+        )
+        user_prompt = (
+            f'Paper: "{paper_title}"\n\n'
+            "Excerpts:\n"
+            + "\n\n".join(context)
+            + "\n\nWrite a concise summary (3-5 sentences) of this paper's contribution, "
+            "methods, and key findings. Cite sources using parenthetical references "
+            "(Author, Year) where appropriate. Base it strictly on the excerpts."
         )
         return system, user_prompt
 

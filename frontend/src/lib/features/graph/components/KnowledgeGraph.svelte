@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { streamConceptSummary } from '$lib/features/graph/api';
+  import { streamPaperSummary } from '$lib/features/literature/api';
   import { clusterColor } from '$lib/features/graph/clusterColor';
   import type {
     ConceptSource,
@@ -83,6 +84,44 @@
   let summary = $state<ConceptSummary>({ status: 'idle', text: '', sources: [] });
   let summaryToken = 0;
 
+  let paperSummary = $state<ConceptSummary>({ status: 'idle', text: '', sources: [] });
+  let paperSummaryToken = 0;
+
+  function generatePaperSummary() {
+    const sel = selected;
+    if (!sel || !projectId) return;
+    const paperId = untrack(() => layoutNodes.find((n) => n.id === sel)?.meta?.doc_id);
+    if (!paperId) return;
+    paperSummary = { status: 'loading', text: '', sources: [] };
+    const token = ++paperSummaryToken;
+    const stop = streamPaperSummary(
+      projectId,
+      paperId,
+      (chunk) => {
+        if (token !== paperSummaryToken) return;
+        paperSummary.status = 'streaming';
+        paperSummary.text += chunk;
+      },
+      (sources) => {
+        if (token !== paperSummaryToken) return;
+        paperSummary.sources = sources ?? [];
+      },
+      () => {
+        if (token !== paperSummaryToken) return;
+        if (paperSummary.status !== 'error') paperSummary.status = 'done';
+      },
+      (e) => {
+        if (token !== paperSummaryToken) return;
+        paperSummary.status = 'error';
+        paperSummary.error = e.message;
+      },
+    );
+    const orig = stop;
+    paperSummaryStop = () => { paperSummaryToken++; orig(); };
+  }
+
+  let paperSummaryStop: (() => void) | null = null;
+
   $effect(() => {
     const sel = selected;
     summary = { status: 'idle', text: '', sources: [] };
@@ -118,6 +157,15 @@
       summaryToken++;
       stop();
     };
+  });
+
+  $effect(() => {
+    const sel = selected;
+    paperSummary = { status: 'idle', text: '', sources: [] };
+    if (paperSummaryStop) {
+      paperSummaryStop();
+      paperSummaryStop = null;
+    }
   });
 
   const W = 800;
@@ -788,6 +836,47 @@
               {/if}
             </div>
           {/if}
+        {/if}
+        {#if papersModeOn && selectedNode.meta}
+          <div class="mt-2 border-t border-white/10 pt-2">
+            <div class="mb-1 flex items-center justify-between">
+              <p class="text-[10px] font-medium uppercase tracking-wider text-slate-500">
+                Paper Summary
+              </p>
+              {#if paperSummary.status === 'idle'}
+                <button
+                  onclick={generatePaperSummary}
+                  class="rounded-md bg-indigo-500/20 px-2 py-0.5 text-[10px] font-medium text-indigo-300 hover:bg-indigo-500/30"
+                >
+                  Generate
+                </button>
+              {/if}
+            </div>
+            {#if paperSummary.status === 'loading'}
+              <p class="text-xs text-slate-400">Generating summary…</p>
+            {:else if paperSummary.status === 'error'}
+              <p class="text-xs text-red-400">{paperSummary.error}</p>
+            {:else}
+              {#if paperSummary.text}
+                <p class="text-xs leading-relaxed text-slate-300">{paperSummary.text}</p>
+              {:else if paperSummary.status === 'idle'}
+                <p class="text-xs text-slate-500">Click "Generate" to summarize this paper.</p>
+              {/if}
+            {/if}
+            {#if paperSummary.sources.length > 0}
+              <p class="mb-1 mt-2 text-[10px] font-medium uppercase tracking-wider text-slate-500">Sources</p>
+              <ul class="space-y-1">
+                {#each paperSummary.sources as s (s?.doc_id ?? s?.title ?? s?.snippet ?? '')}
+                  <li class="flex items-start justify-between gap-2 text-[11px] text-slate-400">
+                    <span class="truncate" title={s?.snippet ?? ''}>{s?.title ?? 'Untitled document'}</span>
+                    {#if s?.page}
+                      <span class="shrink-0 text-slate-500">p. {s.page}</span>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
         {/if}
         {#if selectedNeighbors.length}
           <p class="mb-1 mt-2 text-[10px] font-medium uppercase tracking-wider text-slate-500">

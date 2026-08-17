@@ -120,6 +120,61 @@ class LiteratureService:
                 pass
         self.db.commit()
 
+    # --- system status --------------------------------------------------------
+
+    def system_status(self, user_id: str) -> dict:
+        """Check whether the services needed for enrichment are reachable.
+
+        Returns a dict with ``model`` and ``network`` booleans plus a
+        ``warnings`` list of human-readable strings for anything that is
+        missing or unreachable.
+        """
+        warnings: list[str] = []
+        model_ok = False
+        network_ok = False
+
+        # --- LLM model check ---
+        try:
+            from app.features.models.service import ModelService
+            ms = ModelService(self.db)
+            model = ms.get_active_model(user_id)
+            if model:
+                model_ok = True
+            else:
+                warnings.append(
+                    "No AI model configured. Enrichment of paper metadata will be limited. "
+                    "Go to Settings → Model to select or add a model."
+                )
+        except Exception:
+            warnings.append(
+                "Could not check AI model status. Enrichment of paper metadata "
+                "may be limited."
+            )
+
+        # --- Network check ---
+        try:
+            import requests as _requests
+            resp = _requests.get(
+                "https://api.crossref.org/works",
+                params={"rows": 1},
+                timeout=5,
+            )
+            network_ok = resp.status_code < 400
+        except Exception:
+            network_ok = False
+
+        if not network_ok:
+            warnings.append(
+                "No internet connection detected. Crossref/OpenAlex metadata lookup "
+                "is unavailable. Check your network and try again."
+            )
+
+        return {
+            "model": model_ok,
+            "network": network_ok,
+            "warnings": warnings,
+        }
+
     # --- papers -------------------------------------------------------------
 
     def papers(self, user_id: str, project_id: str) -> List[dict]:
@@ -175,7 +230,7 @@ class LiteratureService:
 
     def entries(self, user_id: str, project_id: str) -> List[dict]:
         rows = self.db.execute(
-            """SELECT e.*, d.title AS title
+            """SELECT e.*, d.title AS title, d.apa_reference AS doc_apa_reference
                FROM literature_entries e
                JOIN documents d ON d.id = e.paper_id
                WHERE e.user_id = ? AND e.project_id = ?
@@ -186,7 +241,7 @@ class LiteratureService:
 
     def get_entry(self, paper_id: str, user_id: str) -> Optional[dict]:
         row = self.db.execute(
-            """SELECT e.*, d.title AS title
+            """SELECT e.*, d.title AS title, d.apa_reference AS doc_apa_reference
                FROM literature_entries e
                JOIN documents d ON d.id = e.paper_id
                WHERE e.paper_id = ? AND e.user_id = ?""",
@@ -196,6 +251,8 @@ class LiteratureService:
 
     @staticmethod
     def _entry_from_row(row) -> dict:
+        doc_apa = row["doc_apa_reference"] if "doc_apa_reference" in row.keys() else None
+        apa = (doc_apa or "").strip() or row["apa_reference"] or ""
         return {
             "paper_id": row["paper_id"],
             "title": row["title"] or "",
@@ -205,7 +262,7 @@ class LiteratureService:
             "key_findings": row["key_findings"],
             "limitations": row["limitations"],
             "relevance": row["relevance"],
-            "apa_reference": row["apa_reference"],
+            "apa_reference": apa,
             "auto_generated": bool(row["auto_generated"]),
         }
 
@@ -294,6 +351,12 @@ class LiteratureService:
                     1 if (auto or auto_generated) else 0,
                     json.dumps(sorted(user_edited)) if user_edited else None,
                 ),
+            )
+            self.db.commit()
+        if not auto and "apa_reference" in clean and clean["apa_reference"]:
+            self.db.execute(
+                "UPDATE documents SET apa_reference = ? WHERE id = ?",
+                (clean["apa_reference"], paper_id),
             )
             self.db.commit()
         return self.get_entry(paper_id, user_id)
@@ -520,6 +583,10 @@ class LiteratureService:
                 "pages": paper.get("pages"),
                 "publisher": paper.get("publisher"),
                 "url": paper.get("url"),
+                "paper_type": paper.get("paper_type"),
+                "edition": paper.get("edition"),
+                "issn": paper.get("issn"),
+                "isbn": paper.get("isbn"),
             }
         )
         self.db.execute(
@@ -557,6 +624,19 @@ class LiteratureService:
             (paper_id, user_id),
         ).fetchone()
         user_edited = self._parse_user_edited(raw["user_edited"] if raw else None)
+        if "apa_reference" in user_edited:
+            entry_apa_row = self.db.execute(
+                "SELECT apa_reference FROM literature_entries WHERE paper_id = ? AND user_id = ?",
+                (paper_id, user_id),
+            ).fetchone()
+            preserved_apa = (entry_apa_row["apa_reference"] or "").strip() if entry_apa_row else ""
+            if preserved_apa:
+                self.db.execute(
+                    "UPDATE documents SET apa_reference = ? WHERE id = ?",
+                    (preserved_apa, paper_id),
+                )
+                self.db.commit()
+                apa = preserved_apa
         entry_fields = {}
         if "citation" not in user_edited:
             entry_fields["citation"] = self.auto_citation(paper)
@@ -728,15 +808,7 @@ class LiteratureService:
         paper["extracted_doi"] = extract_doi(first_page)
         heuristic = heuristic_title(first_page) or title or self._title_from_filename(paper)
 
-        if not heuristic or len(heuristic) < 10:
-            paper["verification_status"] = None
-            paper["metadata_candidates"] = []
-            paper.setdefault("paper_type", None)
-            paper.setdefault("edition", None)
-            paper.setdefault("issn", None)
-            paper.setdefault("isbn", None)
-            return paper
-
+        # --- DOI-based lookup (highest confidence) ---
         if paper["extracted_doi"]:
             record = metadata_sources.crossref_by_doi(paper["extracted_doi"])
             if record:
@@ -746,6 +818,12 @@ class LiteratureService:
                 return paper
             else:
                 paper["extracted_doi"] = None
+
+        # If heuristic is too short for a title search, we still need a
+        # query string.  Use whatever we have (filename-derived title, etc.)
+        # so the Crossref/OpenAlex title search below has a chance to match.
+        if not heuristic or len(heuristic) < 10:
+            heuristic = title or self._title_from_filename(paper) or ""
 
         llm_fields = self._ai_extract(user_id, first_page, paper.get("filename"))
         ai_candidate = self._ai_candidate(llm_fields)
@@ -996,10 +1074,71 @@ class LiteratureService:
         self.db.commit()
 
     @staticmethod
-    def _strip_xml(text: str) -> str:
-        if not text:
-            return text
-        return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
+    def _title_from_apa(apa: str) -> Optional[str]:
+        """Extract the article title from an APA 7th-edition reference string.
+
+        APA format: ``Author, A. A. (Year). Title of the article. Journal …``
+        The title sits between the year-closing ``). `` and the next sentence
+        boundary (``. `` followed by a capital letter or end of string).
+        """
+        if not apa:
+            return None
+        # Match the "(Year). " anchor — year may be "n.d."
+        m = re.search(r"\)\.\s+", apa)
+        if not m:
+            return None
+        rest = apa[m.end():]
+        # Title runs until the next ". " followed by a capital letter (journal
+        # name) or end of string.
+        end = re.search(r"\.\s+[A-Z]", rest)
+        title = rest[:end.start() + 1].strip() if end else rest.strip().rstrip(".")
+        return title if len(title.split()) >= 3 else None
+
+    def recompute_all_apa(self, user_id: str, project_id: str) -> int:
+        """Recomputes ``documents.apa_reference`` from current field values for
+        every paper in the project.  Also recovers wrong titles from APA when
+        the current title looks like a filename or abbreviation (no spaces,
+        all-caps, very short).
+
+        Call on literature page load so that stale metadata is refreshed.
+        """
+        papers = self.papers(user_id, project_id)
+        updates: list[tuple[str, str]] = []
+        for paper in papers:
+            if paper.get("metadata_user_edited"):
+                continue
+            apa = self.apa_reference(paper)
+            doc_apa = paper.get("apa_reference") or ""
+            current_title = (paper.get("title") or "").strip()
+            # Check if title looks like a filename or abbreviation
+            title_words = current_title.split()
+            looks_bad = (
+                len(title_words) < 3
+                or current_title == current_title.upper()
+                or (paper.get("filename") or "").lower().replace(".pdf", "")
+                == current_title.lower()
+            )
+            new_title = None
+            if looks_bad and apa:
+                recovered = self._title_from_apa(apa)
+                if recovered and recovered != current_title:
+                    new_title = recovered
+            if apa != doc_apa or new_title:
+                sets = ["apa_reference = ?"]
+                params: list[str] = [apa]
+                if new_title:
+                    sets.append("title = ?")
+                    params.append(new_title)
+                params.append(paper["id"])
+                updates.append((
+                    f"UPDATE documents SET {', '.join(sets)} WHERE id = ?",
+                    params,
+                ))
+        for sql, params in updates:
+            self.db.execute(sql, params)
+        if updates:
+            self.db.commit()
+        return len(updates)
 
     @staticmethod
     def apa_reference(paper: dict) -> str:

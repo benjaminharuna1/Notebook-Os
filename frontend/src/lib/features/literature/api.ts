@@ -239,4 +239,32 @@ export function streamClusterSummary(
   );
 }
 
+export function streamPaperSummary(
+  projectId: string,
+  paperId: string,
+  onChunk: (text: string) => void,
+  onSources: (sources: ConceptSource[]) => void,
+  onDone: () => void,
+  onError: (error: Error) => void,
+): () => void {
+  return createSSEConnection(
+    `/projects/${projectId}/literature/entries/${paperId}/summarize`,
+    {},
+    onChunk,
+    onDone,
+    onError,
+    (sources) => onSources((sources as ConceptSource[] | null) ?? []),
+  );
+}
+
+export interface LiteratureStatus {
+  model: boolean;
+  network: boolean;
+  warnings: string[];
+}
+
+export async function getLiteratureStatus(projectId: string): Promise<LiteratureStatus> {
+  return api.get<LiteratureStatus>(`/projects/${projectId}/literature/status`);
+}
+
 export type { GraphEdge, GraphNode, LiteratureEntry };

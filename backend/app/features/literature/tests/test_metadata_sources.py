@@ -536,6 +536,7 @@ def _fake_enrich(paper, user_id=None):
     paper["apa_reference"] = "Doe, J. (2024). Regenerated reference."
     paper["title"] = "Regenerated Title"
     paper["year"] = 2024
+    paper["authors"] = ["Doe, J."]
     return paper
 
 
@@ -551,7 +552,7 @@ def test_regenerate_metadata_processes_selected_papers_only(tmp_path):
     assert results == [{"paper_id": "p1", "status": "verified"}]
 
     entry = service.get_entry("p1", "u1")
-    assert entry["apa_reference"] == "Doe, J. (2024). Regenerated reference."
+    assert entry["apa_reference"] == "Doe, J. (2024). Regenerated Title."
     assert entry["citation"]
 
     p2 = service.papers("u1", "proj1")
@@ -632,7 +633,7 @@ def test_export_references_docx_builds_word_document(tmp_path):
     assert document.paragraphs[1].style.name == "Heading 1"
     refs = texts[2:]
     assert refs == [
-        "Alpha, A. (2020). From entry.",
+        "Alpha, A. (2020). From doc.",
         "Beta, B. (2021). Second paper.",
         "Gamma, G (2022). Third Paper.",
     ]

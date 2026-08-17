@@ -6,11 +6,16 @@
     exportReferencesDocx,
     getLiteratureEntry,
     getLiteratureJob,
+    getLiteratureStatus,
+    getPaperMetadata,
+    updatePaperMetadata,
+    applyPaperCandidate,
     regenerateLiteratureMetadata,
     startLiteratureBuild,
     type LiteratureBuildJob,
     type LiteratureEntry,
   } from '$lib/features/literature/api';
+  import type { LiteratureMetadata, MetadataCandidate } from '$lib/features/literature/api';
   import type { Document } from '../types';
 
   let { projectId }: { projectId?: string } = $props();
@@ -28,12 +33,39 @@
   let actionInfo = $state('');
   let buildJob = $state<LiteratureBuildJob | null>(null);
   let buildToken = $state(0);
+  let systemWarnings = $state<string[]>([]);
 
   let viewPaper = $state<Document | null>(null);
   let viewEntry = $state<LiteratureEntry | null>(null);
   let viewLoading = $state(false);
   let viewEmpty = $state(false);
   let viewError = $state('');
+
+  let metaModal = $state<{
+    paperId: string;
+    title: string;
+    authorsText: string;
+    year: string;
+    doi: string;
+    abstract: string;
+    journal: string;
+    volume: string;
+    issue: string;
+    pages: string;
+    publisher: string;
+    url: string;
+    apaReference: string;
+    fileType: string;
+    paperType: string;
+    edition: string;
+    issn: string;
+    isbn: string;
+    candidates: MetadataCandidate[];
+  } | null>(null);
+  let metaLoading = $state(false);
+  let metaSaving = $state(false);
+  let metaError = $state('');
+  let applyingCandidate = $state<number | null>(null);
 
   const entryFields = $derived(
     viewEntry
@@ -54,8 +86,19 @@
     loading = false;
   }
 
+  async function loadStatus() {
+    if (!projectId) return;
+    try {
+      const status = await getLiteratureStatus(projectId);
+      systemWarnings = status.warnings ?? [];
+    } catch {
+      systemWarnings = [];
+    }
+  }
+
   $effect(() => {
     loadDocs();
+    loadStatus();
     const timer = setInterval(() => loadDocs(), 2500);
     return () => clearInterval(timer);
   });
@@ -207,6 +250,116 @@
     });
   }
 
+  async function openMetaModal(doc: Document) {
+    if (!projectId || metaModal) return;
+    metaModal = null;
+    metaLoading = true;
+    metaError = '';
+    openMenu = null;
+    try {
+      const meta = await getPaperMetadata(projectId, doc.id);
+      metaModal = {
+        paperId: doc.id,
+        title: meta.title ?? '',
+        authorsText: (meta.authors ?? []).join('; '),
+        year: meta.year != null ? String(meta.year) : '',
+        doi: meta.doi ?? '',
+        abstract: meta.abstract ?? '',
+        journal: meta.journal ?? '',
+        volume: meta.volume ?? '',
+        issue: meta.issue ?? '',
+        pages: meta.pages ?? '',
+        publisher: meta.publisher ?? '',
+        url: meta.url ?? '',
+        apaReference: meta.apa_reference ?? '',
+        fileType: meta.file_type ?? 'pdf',
+        paperType: meta.paper_type ?? '',
+        edition: meta.edition ?? '',
+        issn: meta.issn ?? '',
+        isbn: meta.isbn ?? '',
+        candidates: meta.candidates ?? [],
+      };
+    } catch (e) {
+      metaError = e instanceof Error ? e.message : String(e ?? 'Could not load metadata');
+    } finally {
+      metaLoading = false;
+    }
+  }
+
+  async function applyCandidate(index: number) {
+    if (!projectId || !metaModal) return;
+    applyingCandidate = index;
+    metaError = '';
+    try {
+      const meta = await applyPaperCandidate(projectId, metaModal.paperId, index);
+      metaModal = {
+        ...metaModal,
+        title: meta.title ?? '',
+        authorsText: (meta.authors ?? []).join('; '),
+        year: meta.year != null ? String(meta.year) : '',
+        doi: meta.doi ?? '',
+        abstract: meta.abstract ?? '',
+        journal: meta.journal ?? '',
+        volume: meta.volume ?? '',
+        issue: meta.issue ?? '',
+        pages: meta.pages ?? '',
+        publisher: meta.publisher ?? '',
+        url: meta.url ?? '',
+        apaReference: meta.apa_reference ?? '',
+        paperType: meta.paper_type ?? '',
+        edition: meta.edition ?? '',
+        issn: meta.issn ?? '',
+        isbn: meta.isbn ?? '',
+        candidates: meta.candidates ?? [],
+      };
+      const paperId = metaModal.paperId;
+      metaModal = null;
+      await loadDocs();
+      actionInfo = 'Metadata updated.';
+    } catch (e) {
+      metaError = e instanceof Error ? e.message : String(e ?? 'Could not apply metadata');
+    } finally {
+      applyingCandidate = null;
+    }
+  }
+
+  async function saveMeta() {
+    if (!projectId || !metaModal) return;
+    metaSaving = true;
+    metaError = '';
+    try {
+      const authors = metaModal.authorsText
+        .split(';')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const year = metaModal.year.trim() ? Number(metaModal.year.trim()) : null;
+      await updatePaperMetadata(projectId, metaModal.paperId, {
+        title: metaModal.title,
+        authors,
+        year: year && Number.isFinite(year) ? year : null,
+        doi: metaModal.doi,
+        abstract: metaModal.abstract,
+        journal: metaModal.journal,
+        volume: metaModal.volume,
+        issue: metaModal.issue,
+        pages: metaModal.pages,
+        publisher: metaModal.publisher,
+        url: metaModal.url,
+        paper_type: metaModal.paperType || null,
+        edition: metaModal.edition || null,
+        issn: metaModal.issn || null,
+        isbn: metaModal.isbn || null,
+      });
+      metaModal = null;
+      await loadDocs();
+      actionInfo = 'Metadata saved.';
+    } catch (e) {
+      metaError = e instanceof Error ? e.message : String(e ?? 'Save failed');
+    } finally {
+      metaSaving = false;
+    }
+  }
+
   async function handleExportReferences() {
     if (!projectId) return;
     exporting = true;
@@ -311,6 +464,17 @@
     <p class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
       {actionInfo}
     </p>
+  {/if}
+
+  {#if systemWarnings.length > 0}
+    <div class="space-y-2">
+      {#each systemWarnings as warning}
+        <div class="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <span class="mt-0.5 shrink-0 text-sm">⚠</span>
+          <span>{warning}</span>
+        </div>
+      {/each}
+    </div>
   {/if}
 
   {#if buildJob}
@@ -466,6 +630,13 @@
                   ✎ Process metadata
                 </button>
                 <button
+                  onclick={() => openMetaModal(doc)}
+                  disabled={busy !== null}
+                  class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-indigo-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  ✏ Edit metadata
+                </button>
+                <button
                   onclick={() => openView(doc)}
                   class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-600 hover:bg-slate-50"
                 >
@@ -605,6 +776,300 @@
           Open in Literature Map →
         </a>
       </div>
+    </div>
+  </div>
+{/if}
+
+{#if metaModal}
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+    <div class="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+        <h2 class="text-base font-semibold text-slate-900">Edit paper metadata</h2>
+        <button
+          onclick={() => (metaModal = null)}
+          class="text-slate-400 hover:text-slate-700"
+          aria-label="Close"
+        >✕</button>
+      </div>
+      {#if metaLoading}
+        <p class="p-6 text-sm text-slate-400">Loading metadata…</p>
+      {:else}
+        <div class="space-y-3 overflow-y-auto p-5">
+          {#if metaError}
+            <p class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {metaError}
+            </p>
+          {/if}
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Document Type
+            </label>
+            <select
+              bind:value={metaModal.paperType}
+              class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+            >
+              <option value="">Auto-detect</option>
+              <option value="journal_article">Journal Article</option>
+              <option value="conference_paper">Conference Paper</option>
+              <option value="textbook">Textbook / Book</option>
+              <option value="preprint">Preprint</option>
+              <option value="thesis">Thesis / Dissertation</option>
+              <option value="newspaper">Newspaper / Magazine</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Title
+            </label>
+            <input
+              bind:value={metaModal.title}
+              class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Authors
+            </label>
+            <input
+              bind:value={metaModal.authorsText}
+              placeholder="Family, Given; Family, Given"
+              class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+            />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Year
+              </label>
+              <input
+                bind:value={metaModal.year}
+                inputmode="numeric"
+                placeholder="2021"
+                class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+              />
+            </div>
+            {#if metaModal.paperType !== 'textbook'}
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  DOI
+                </label>
+                <input
+                  bind:value={metaModal.doi}
+                  placeholder="10.1000/xyz123"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+            {/if}
+          </div>
+          {#if metaModal.paperType === 'textbook'}
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Edition
+                </label>
+                <input
+                  bind:value={metaModal.edition}
+                  placeholder="3rd"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  ISBN
+                </label>
+                <input
+                  bind:value={metaModal.isbn}
+                  placeholder="978-0-123456-78-9"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+          {/if}
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+              {metaModal.paperType === 'newspaper' ? 'Newspaper Name' : 'Journal / Container'}
+            </label>
+            <input
+              bind:value={metaModal.journal}
+              placeholder={metaModal.paperType === 'newspaper' ? 'The Guardian' : 'Journal of Example Research'}
+              class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+            />
+          </div>
+          {#if metaModal.paperType === 'journal_article' || metaModal.paperType === 'conference_paper'}
+            <div class="grid grid-cols-3 gap-3">
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Volume
+                </label>
+                <input
+                  bind:value={metaModal.volume}
+                  placeholder="15"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Issue
+                </label>
+                <input
+                  bind:value={metaModal.issue}
+                  placeholder="2"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Pages
+                </label>
+                <input
+                  bind:value={metaModal.pages}
+                  placeholder="12-34"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+            <div class="mt-3">
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                ISSN
+              </label>
+              <input
+                bind:value={metaModal.issn}
+                placeholder="1234-5678"
+                class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+              />
+            </div>
+          {:else if metaModal.paperType === 'newspaper'}
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Pages
+              </label>
+              <input
+                bind:value={metaModal.pages}
+                placeholder="A1, A4"
+                class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+              />
+            </div>
+          {:else if !metaModal.paperType || metaModal.paperType === 'other' || metaModal.paperType === 'preprint' || metaModal.paperType === 'thesis'}
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Volume
+                </label>
+                <input
+                  bind:value={metaModal.volume}
+                  placeholder="15"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Issue
+                </label>
+                <input
+                  bind:value={metaModal.issue}
+                  placeholder="2"
+                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+          {/if}
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Publisher
+              </label>
+              <input
+                bind:value={metaModal.publisher}
+                placeholder="Example Publishing"
+                class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+              />
+            </div>
+            {#if metaModal.paperType !== 'textbook'}
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Link / URL
+                </label>
+                <input
+                  bind:value={metaModal.url}
+                  placeholder="https://..."
+                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+            {/if}
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Abstract
+            </label>
+            <textarea
+              bind:value={metaModal.abstract}
+              rows="4"
+              class="w-full resize-y rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+            ></textarea>
+          </div>
+          <div class="rounded-lg bg-slate-50 px-3 py-2">
+            <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              APA reference (regenerated from these fields)
+            </p>
+            <p class="mt-1 break-words text-xs leading-snug text-slate-700">
+              {metaModal.apaReference}
+            </p>
+          </div>
+          {#if (metaModal.candidates ?? []).length > 0}
+            <div class="rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <p class="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+                Unverified paper — suggested records
+              </p>
+              <p class="mt-0.5 text-xs text-amber-700/80">
+                Pick a record to apply it as the verified metadata.
+              </p>
+              <div class="mt-2 space-y-2">
+                {#each metaModal.candidates as candidate, i (i)}
+                  <div class="flex items-start gap-3 rounded-lg border border-amber-200 bg-white p-2.5">
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-sm font-medium text-slate-900">
+                        {candidate.title ?? 'Untitled'}
+                      </p>
+                      <p class="mt-0.5 truncate text-xs text-slate-500">
+                        {candidate.authors?.length ? candidate.authors.join('; ') : 'Unknown authors'}
+                        {candidate.year ? `(${candidate.year})` : ''}
+                      </p>
+                      <p class="truncate text-xs text-slate-400">
+                        {candidate.source ?? 'source'}
+                        {candidate.doi ? ` · doi:${candidate.doi}` : ''}
+                        {candidate.confidence != null ? ` · ${Math.round(candidate.confidence * 100)}%` : ''}
+                      </p>
+                    </div>
+                    <button
+                      onclick={() => applyCandidate(i)}
+                      disabled={applyingCandidate !== null}
+                      class="shrink-0 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                    >
+                      {applyingCandidate === i ? 'Applying…' : 'Use this'}
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
+        <div class="flex justify-end gap-2 border-t border-slate-200 px-5 py-3">
+          <button
+            onclick={() => (metaModal = null)}
+            class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+          >
+            Cancel
+          </button>
+          <button
+            onclick={saveMeta}
+            disabled={metaSaving}
+            class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          >
+            {metaSaving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      {/if}
     </div>
   </div>
 {/if}
