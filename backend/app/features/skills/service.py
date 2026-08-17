@@ -227,6 +227,14 @@ class SkillsService:
             "methodology and sample", "key findings", "limitations and gaps",
             "relevance and contribution", "review table",
         ],
+        "critical-thinking": [
+            "critical thinking", "peer review", "critically evaluate",
+            "methodological flaws", "biases", "bias audit", "p-hacking",
+            "confounding", "falsifiability", "counter-narrative",
+            "what are the weaknesses", "challenge the findings",
+            "adversarial", "how reliable", "what's wrong with",
+            "blind spots", "publication bias", "conflict of interest",
+        ],
     }
 
     def detect_relevant_skills(self, user_id: str, message: str) -> str:

@@ -11,6 +11,7 @@ export interface SourceChunk {
   title: string;
   page?: number;
   document_id?: string;
+  apa_reference?: string;
 }
 
 export interface ChatMessage {

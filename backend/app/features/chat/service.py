@@ -138,6 +138,15 @@ class ChatService:
             "identify connections and contradictions, and suggest future directions. "
             "Use APA 7th edition parenthetical citations for every claim."
         ),
+        "/review": (
+            "Act as an adversarial academic peer reviewer. Critically audit the indexed literature. "
+            "Execute a full Methodological Audit (sample integrity, statistical rigor, experimental control). "
+            "Expose Hidden Assumptions, Publication Bias, and Conflicts of Interest. "
+            "Generate Counter-Narratives: define boundary conditions, falsifiability criteria, and alternative theories. "
+            "Label weak claims as 'Speculative Hypothesis'. "
+            "Conclude every analysis with a Critical Evaluation Summary containing: "
+            "Key Methodological Limitations, Unresolved Contradictions, High-Value Future Research Questions."
+        ),
     }
 
     def _apply_slash_command(self, command: str) -> str:
@@ -222,17 +231,48 @@ class ChatService:
         user_doc_ids = set(req.document_ids or [])
         source_doc_ids = list(user_doc_ids | search_doc_ids)
         lit_ctx = self._lit_entries_context(project_id, req.document_ids, source_doc_ids)
+
+        # Build APA references string for the prompt
+        doc_ids_for_refs = list({getattr(s, "document_id", None) for s in sources if getattr(s, "document_id", None)})
+        apa_map: dict[str, str] = {}
+        if doc_ids_for_refs:
+            ph = ",".join("?" for _ in doc_ids_for_refs)
+            for row in self.db.execute(
+                f"SELECT id, apa_reference FROM documents WHERE id IN ({ph})", doc_ids_for_refs
+            ).fetchall():
+                if row["apa_reference"]:
+                    apa_map[row["id"]] = row["apa_reference"]
+
+        # Deduplicated APA references in order of first appearance
+        seen_refs: list[str] = []
+        seen_titles: set[str] = set()
+        for s in sources:
+            doc_id = getattr(s, "document_id", None)
+            ref = apa_map.get(doc_id, "")
+            if ref and s.document_title not in seen_titles:
+                seen_titles.add(s.document_title)
+                seen_refs.append(ref)
+        apa_references_str = "\n".join(seen_refs)
+
         context = self.prompt_builder.build(
             sources, effective_message, skill_instructions,
             cluster_context=cluster_ctx,
             lit_entries_context=lit_ctx,
             slash_extra=slash_extra,
+            apa_references=apa_references_str,
         )
 
         # Fix 4: Cap conversation history to last 20 messages
         messages = self.repo.get_messages(session_id, limit=20)
+
         source_data = [
-            {"chunk_id": s.chunk_id, "title": s.document_title, "page": s.page_number, "document_id": getattr(s, "document_id", None)}
+            {
+                "chunk_id": s.chunk_id,
+                "title": s.document_title,
+                "page": s.page_number,
+                "document_id": getattr(s, "document_id", None),
+                "apa_reference": apa_map.get(getattr(s, "document_id", None), ""),
+            }
             for s in sources
         ]
 

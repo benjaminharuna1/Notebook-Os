@@ -102,6 +102,25 @@ export function createSSEConnection(
         }
       }
 
+      // Flush any remaining buffer (last event may lack trailing newline)
+      if (buffer.trim()) {
+        for (const line of buffer.split('\n')) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'chunk') onChunk(data.content);
+            else if (data.type === 'sources') {
+              onSources?.(data.sources);
+            } else if (data.type === 'error') {
+              finished = true;
+              onError(new Error(data.detail || 'Generation failed'));
+            } else if (data.type === 'done') {
+              finished = true;
+              onDone(data.session_id);
+            }
+          }
+        }
+      }
+
       if (!finished) {
         onError(new Error('Connection closed before the response completed'));
       }

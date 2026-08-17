@@ -13,9 +13,7 @@
   let sessionId = $state<string | null>(null);
   let abortFn = $state<(() => void) | null>(null);
   let selectedDocIds = $state<Set<string>>(new Set());
-  let docPickerOpen = $state(false);
   let availableDocs = $state<{ id: string; title: string }[]>([]);
-  let docSearch = $state('');
 
   async function loadSession(sid: string) {
     try {
@@ -268,6 +266,17 @@
     if (userText) startStreaming(userText);
   }
 
+  function toggleDoc(docId: string) {
+    const next = new Set(selectedDocIds);
+    if (next.has(docId)) next.delete(docId);
+    else next.add(docId);
+    selectedDocIds = next;
+  }
+
+  function clearDocs() {
+    selectedDocIds = new Set();
+  }
+
   function scrollToBottom(node: HTMLDivElement) {
     $effect(() => {
       if ($messages.length) {
@@ -276,11 +285,7 @@
     });
   }
 
-  const filteredDocs = $derived(
-    docSearch
-      ? availableDocs.filter((d) => d.title.toLowerCase().includes(docSearch.toLowerCase()))
-      : availableDocs
-  );
+
 </script>
 
 <div class="flex h-full flex-col">
@@ -303,57 +308,15 @@
     {/if}
   </div>
 
-  {#if availableDocs.length > 0}
-    <div class="border-t border-slate-100 px-6 pt-3">
-      <div class="flex items-center gap-2">
-        <button
-          onclick={() => (docPickerOpen = !docPickerOpen)}
-          class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-500 hover:bg-slate-50"
-        >
-          <span>📄</span>
-          <span>
-            {selectedDocIds.size === 0
-              ? 'All papers'
-              : `${selectedDocIds.size} paper${selectedDocIds.size > 1 ? 's' : ''} selected`}
-          </span>
-          <span class="text-[10px]">{docPickerOpen ? '▲' : '▼'}</span>
-        </button>
-        {#if selectedDocIds.size > 0}
-          <button
-            onclick={() => (selectedDocIds = new Set())}
-            class="text-[10px] text-slate-400 hover:text-slate-600"
-          >
-            Clear
-          </button>
-        {/if}
-      </div>
-      {#if docPickerOpen}
-        <div class="mt-2 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
-          <input
-            bind:value={docSearch}
-            placeholder="Search papers…"
-            class="mb-1.5 w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-indigo-400"
-          />
-          {#each filteredDocs as doc}
-            <label class="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs hover:bg-slate-50">
-              <input
-                type="checkbox"
-                checked={selectedDocIds.has(doc.id)}
-                onchange={() => {
-                  const next = new Set(selectedDocIds);
-                  if (next.has(doc.id)) next.delete(doc.id);
-                  else next.add(doc.id);
-                  selectedDocIds = next;
-                }}
-                class="h-3 w-3 accent-indigo-600"
-              />
-              <span class="truncate text-slate-700">{doc.title}</span>
-            </label>
-          {/each}
-        </div>
-      {/if}
-    </div>
-  {/if}
-
-  <ChatInput onsend={handleSendMessage} onStop={stopStreaming} disabled={false} isStreaming={$streaming} />
+  <ChatInput
+    onsend={handleSendMessage}
+    onStop={stopStreaming}
+    disabled={false}
+    isStreaming={$streaming}
+    {projectId}
+    availableDocs={availableDocs}
+    selectedDocIds={selectedDocIds}
+    onToggleDoc={toggleDoc}
+    onClearDocs={clearDocs}
+  />
 </div>

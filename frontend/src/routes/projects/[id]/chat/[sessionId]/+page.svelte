@@ -6,8 +6,4 @@
   const sessionId = $derived($page.params.sessionId);
 </script>
 
-<div class="flex h-full">
-  <div class="flex-1">
-    <ChatWindow sessionId={sessionId} projectId={projectId} />
-  </div>
-</div>
+<ChatWindow sessionId={sessionId} {projectId} />

@@ -68,14 +68,14 @@
   });
 
   async function newChat() {
-    goto(sessionsBase);
+    goto(`${sessionsBase}?new`);
   }
 
   async function removeSession(id: string) {
     await deleteSession(id);
     sessions = sessions.filter((s) => s.id !== id);
     if ($page.url.pathname.endsWith(id)) {
-      goto(sessionsBase);
+      goto(`${sessionsBase}?new`);
     }
   }
 
