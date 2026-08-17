@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 
 from app.core.config import settings
@@ -17,10 +18,21 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = {"pdf"}
 MAX_SIZE = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+PDF_MAGIC = b"%PDF"
 
 # Statuses a job can live in while the pipeline may be poked.
 _ACTIVE_STATUSES = {"queued", "processing"}
 _REPROCESSABLE_STATUSES = {"indexed", "failed"}
+
+
+def _sanitize_filename(name: str) -> str:
+    """Strip control characters, HTML, and path-unsafe glyphs from filenames."""
+    name = re.sub(r"<[^>]+>", "", name)
+    name = re.sub(r"[\x00-\x1f\x7f]", "", name)
+    name = re.sub(r'[<>:"/\\|?*]', "_", name)
+    name = re.sub(r"\.{2,}", ".", name)
+    name = name.strip(". ")
+    return name or "upload.pdf"
 
 
 class IngestionService:
@@ -39,11 +51,21 @@ class IngestionService:
                 status_code=413,
             )
 
+        if len(content) == 0:
+            raise AppException("File is empty", status_code=400)
+
         original_name = Path(file.filename or "upload.pdf").name
         ext = original_name.rsplit(".", 1)[-1].lower()
         if ext not in SUPPORTED_EXTENSIONS:
             raise AppException(
                 f"Unsupported file type: .{ext}. Supported types: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
+                status_code=400,
+            )
+
+        # Verify PDF magic bytes — catches non-PDF files disguised with .pdf extension
+        if not content[:4].startswith(PDF_MAGIC):
+            raise AppException(
+                "File does not appear to be a valid PDF (missing %PDF header)",
                 status_code=400,
             )
 
@@ -60,11 +82,13 @@ class IngestionService:
         with open(file_path, "wb") as f:
             f.write(content)
 
+        safe_name = _sanitize_filename(original_name)
+
         cursor = self.db.cursor()
         cursor.execute(
             """INSERT INTO documents (id, user_id, project_id, title, filename, file_path, file_type, file_size, status)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued')""",
-            (doc_id, user_id, project_id, original_name, original_name, file_path, ext, len(content)),
+            (doc_id, user_id, project_id, safe_name, safe_name, file_path, ext, len(content)),
         )
         self.db.commit()
 

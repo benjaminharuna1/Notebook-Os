@@ -90,6 +90,9 @@
   let pdfModal = $state<{ paperId: string; title: string; fileType: string } | null>(null);
   let pdfLoading = $state(false);
 
+  let sortCol = $state<string>('title');
+  let sortDir = $state<'asc' | 'desc'>('asc');
+
   const tableColumns = [
     { key: 'citation', label: 'Citation (Author, Year)' },
     { key: 'research_objective', label: 'Research Objective / Questions' },
@@ -110,6 +113,8 @@
     tableError = '';
     edgeType = 'all';
     clusterFilter = null;
+    sortCol = 'title';
+    sortDir = 'asc';
     searchResults = [];
     searchOpen = false;
     focusNodeId = '';
@@ -474,6 +479,34 @@
   function toggleCluster(clusterId: string) {
     clusterFilter = clusterFilter === clusterId ? null : clusterId;
   }
+
+  function toggleSort(colKey: string) {
+    if (sortCol === colKey) {
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortCol = colKey;
+      sortDir = 'asc';
+    }
+  }
+
+  const sortedEntries = $derived.by(() => {
+    const list = [...entries];
+    if (!sortCol) return list;
+    list.sort((a, b) => {
+      let va: string;
+      let vb: string;
+      if (sortCol === 'title') {
+        va = a.title ?? '';
+        vb = b.title ?? '';
+      } else {
+        va = (drafts[a.paper_id]?.[sortCol] ?? '').toLowerCase();
+        vb = (drafts[b.paper_id]?.[sortCol] ?? '').toLowerCase();
+      }
+      if (va === vb) return 0;
+      return (va < vb ? -1 : 1) * (sortDir === 'asc' ? 1 : -1);
+    });
+    return list;
+  });
 </script>
 
 <div class="flex h-full flex-col">
@@ -714,12 +747,28 @@
           <table class="min-w-[1500px] border-collapse text-left">
             <thead class="sticky top-0 z-10 bg-slate-100">
               <tr>
-                <th class="border-b border-slate-200 p-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Paper
+                <th
+                  onclick={() => toggleSort('title')}
+                  class="cursor-pointer select-none border-b border-slate-200 p-2 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-700"
+                >
+                  <span class="inline-flex items-center gap-1">
+                    Paper
+                    {#if sortCol === 'title'}
+                      <span class="text-indigo-500">{sortDir === 'asc' ? '▲' : '▼'}</span>
+                    {/if}
+                  </span>
                 </th>
                 {#each tableColumns as col (col.key)}
-                  <th class="border-b border-slate-200 p-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    {col.label}
+                  <th
+                    onclick={() => toggleSort(col.key)}
+                    class="cursor-pointer select-none border-b border-slate-200 p-2 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-700"
+                  >
+                    <span class="inline-flex items-center gap-1">
+                      {col.label}
+                      {#if sortCol === col.key}
+                        <span class="text-indigo-500">{sortDir === 'asc' ? '▲' : '▼'}</span>
+                      {/if}
+                    </span>
                   </th>
                 {/each}
                 <th class="w-36 border-b border-slate-200 p-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -728,7 +777,7 @@
               </tr>
             </thead>
             <tbody>
-              {#each entries as entry (entry.paper_id)}
+              {#each sortedEntries as entry (entry.paper_id)}
                 {@const draft = drafts[entry.paper_id] ?? (drafts[entry.paper_id] = entryToDraft(entry))}
                 <tr class="align-top bg-white">
                   <td class="border-b border-slate-100 p-2">

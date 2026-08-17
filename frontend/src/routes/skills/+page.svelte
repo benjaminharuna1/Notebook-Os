@@ -19,6 +19,9 @@
   let importText = $state('');
   let importError = $state('');
 
+  let installedOpen = $state(true);
+  let catalogOpen = $state(true);
+
   const IMPORT_PLACEHOLDER = '{&quot;id&quot;: &quot;my-skill&quot;, &quot;name&quot;: &quot;My Skill&quot;, &quot;description&quot;: &quot;...&quot;, &quot;instructions&quot;: &quot;...&quot;}';
 
   const categoryColors: Record<string, string> = {
@@ -132,10 +135,15 @@
       <div class="text-center text-slate-400">Loading...</div>
     {:else}
       <section class="mb-8">
-        <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
+        <button
+          onclick={() => (installedOpen = !installedOpen)}
+          class="mb-3 flex w-full items-center gap-2 text-left text-sm font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600"
+        >
+          <span class="text-xs">{installedOpen ? '▼' : '▶'}</span>
           Installed ({installed.length})
-        </h2>
-        {#if installed.length === 0}
+        </button>
+        {#if installedOpen}
+          {#if installed.length === 0}
           <p class="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-400">
             No skills installed. Browse the catalog below to enable your first skill.
           </p>
@@ -181,13 +189,19 @@
             {/each}
           </div>
         {/if}
+        {/if}
       </section>
 
       <section>
-        <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
+        <button
+          onclick={() => (catalogOpen = !catalogOpen)}
+          class="mb-3 flex w-full items-center gap-2 text-left text-sm font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600"
+        >
+          <span class="text-xs">{catalogOpen ? '▼' : '▶'}</span>
           Catalog
-        </h2>
-        <div class="space-y-3">
+        </button>
+        {#if catalogOpen}
+          <div class="space-y-3">
           {#each catalog as entry (entry.skill.id)}
             <div class="flex items-center gap-4 rounded-lg border border-slate-200 p-4">
               <div class="min-w-0 flex-1">
@@ -213,6 +227,7 @@
             </div>
           {/each}
         </div>
+        {/if}
       </section>
     {/if}
   </div>

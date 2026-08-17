@@ -3,6 +3,7 @@ from pathlib import Path
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.features.documents.repository import DocumentRepository
+from app.features.search.vector_store import delete_document_vectors
 
 _MEDIA_TYPES = {
     ".pdf": "application/pdf",
@@ -69,19 +70,39 @@ class DocumentService:
         media_type = _MEDIA_TYPES.get(resolved.suffix.lower(), "application/octet-stream")
         return resolved, media_type
 
-    def delete_document(self, document_id: str, user_id: str, collection_name: str = "documents"):
-        project_id = None
+    def delete_document(self, document_id: str, user_id: str):
+        # Grab file_path and project_id before deleting the row
         row = self.repo.db.execute(
-            "SELECT project_id FROM documents WHERE id = ? AND user_id = ?",
+            "SELECT project_id, file_path FROM documents WHERE id = ? AND user_id = ?",
             (document_id, user_id),
         ).fetchone()
-        if row:
-            project_id = row["project_id"]
+        project_id = row["project_id"] if row else None
+        file_path = row["file_path"] if row else None
 
         self.repo.delete(document_id, user_id)
-        chroma = self.repo.get_chroma()
-        collection = chroma.get_or_create_collection(name=collection_name)
-        collection.delete(where={"document_id": document_id, "user_id": user_id})
+
+        # Remove vectors from ALL embedding collections (not just the active one)
+        try:
+            delete_document_vectors(user_id, document_id)
+        except Exception:
+            pass
+
+        # Remove physical file from disk
+        if file_path:
+            try:
+                resolved = Path(file_path).resolve()
+                resolved.relative_to(Path(settings.UPLOAD_DIR).resolve())
+                if resolved.is_file():
+                    resolved.unlink(missing_ok=True)
+                    # Clean up empty parent directories up to UPLOAD_DIR
+                    parent = resolved.parent
+                    while parent != Path(settings.UPLOAD_DIR).resolve() and parent.exists():
+                        if any(parent.iterdir()):
+                            break
+                        parent.rmdir()
+                        parent = parent.parent
+            except Exception:
+                pass
 
         if project_id:
             self._prune_checkpoints(user_id, project_id, [document_id])
@@ -93,32 +114,41 @@ class DocumentService:
         document_ids: list[str],
         user_id: str,
         project_id: str,
-        collection_name: str = "documents",
     ):
-        """Deletes several documents belonging to a project in one pass.
-
-        Only documents owned by ``user_id`` inside ``project_id`` are touched;
-        unknown/foreign ids are ignored. Chroma vectors are purged per document
-        and the literature map is rebuilt once at the end.
-        """
         if not document_ids:
             return {"success": True, "deleted": 0}
 
+        # Grab file_paths before deleting rows
         rows = self.repo.db.execute(
-            """SELECT id FROM documents
+            """SELECT id, file_path FROM documents
                WHERE user_id = ? AND project_id = ? AND id IN (%s)"""
             % ",".join("?" * len(document_ids)),
             (user_id, project_id, *document_ids),
         ).fetchall()
         owned = [row["id"] for row in rows]
+        file_paths = {row["id"]: row["file_path"] for row in rows}
         if not owned:
             return {"success": True, "deleted": 0}
 
-        chroma = self.repo.get_chroma()
-        collection = chroma.get_or_create_collection(name=collection_name)
         for document_id in owned:
             self.repo.delete(document_id, user_id)
-            collection.delete(where={"document_id": document_id, "user_id": user_id})
+            # Remove physical file from disk
+            fp = file_paths.get(document_id)
+            if fp:
+                try:
+                    resolved = Path(fp).resolve()
+                    resolved.relative_to(Path(settings.UPLOAD_DIR).resolve())
+                    if resolved.is_file():
+                        resolved.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+        # Remove vectors from ALL embedding collections
+        try:
+            for document_id in owned:
+                delete_document_vectors(user_id, document_id)
+        except Exception:
+            pass
 
         self._prune_checkpoints(user_id, project_id, owned)
         self._rebuild_literature(user_id, project_id)

@@ -5,11 +5,23 @@
   let { projectId }: { projectId?: string } = $props();
 
   const MAX_SIZE_MB = 25;
+  const MAX_FILES = 50;
 
   let dragging = $state(false);
 
+  function sanitizeFilename(name: string): string {
+    return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/\.{2,}/g, '.').trim();
+  }
+
+  function isPdf(file: File): boolean {
+    const name = file.name.toLowerCase();
+    return name.endsWith('.pdf');
+  }
+
   async function handleFiles(files: File[]) {
-    for (const file of files) {
+    const pdfs = Array.from(files).filter(isPdf).slice(0, MAX_FILES);
+
+    for (const file of pdfs) {
       const id = uploadQueue.add(file);
       if (!file.name.toLowerCase().endsWith('.pdf')) {
         uploadQueue.patch(id, { status: 'error', error: 'Only .pdf files are supported' });
@@ -17,6 +29,10 @@
       }
       if (file.size > MAX_SIZE_MB * 1024 * 1024) {
         uploadQueue.patch(id, { status: 'error', error: `Max file size is ${MAX_SIZE_MB} MB` });
+        continue;
+      }
+      if (file.size === 0) {
+        uploadQueue.patch(id, { status: 'error', error: 'File is empty' });
         continue;
       }
       try {
@@ -62,6 +78,25 @@
 >
   <label class="cursor-pointer">
     <span class="text-sm text-slate-600">Drop PDFs here or click to upload (max {MAX_SIZE_MB} MB)</span>
-    <input type="file" class="hidden" multiple accept=".pdf" onchange={handleFileSelect} />
+    <input
+      type="file"
+      class="hidden"
+      multiple
+      accept=".pdf"
+      onchange={handleFileSelect}
+    />
+  </label>
+  <label class="mt-2 cursor-pointer">
+    <span class="text-[11px] text-slate-400 underline decoration-slate-300 underline-offset-2 hover:text-slate-600">
+      or upload a folder
+    </span>
+    <input
+      type="file"
+      class="hidden"
+      webkitdirectory
+      directory
+      multiple
+      onchange={handleFileSelect}
+    />
   </label>
 </div>

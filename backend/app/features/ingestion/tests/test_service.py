@@ -247,8 +247,46 @@ async def test_ingest_rejects_unknown_project():
     conn = _db()
     service = IngestionService(conn)
     with pytest.raises(AppException) as excinfo:
-        await service.ingest(_FakeFile("c.pdf", b"data"), "u1", project_id="nope")
+        await service.ingest(_FakeFile("c.pdf", b"%PDF-1.4 test"), "u1", project_id="nope")
     assert excinfo.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_ingest_rejects_non_pdf_magic_bytes():
+    conn = _db()
+    service = IngestionService(conn)
+    with pytest.raises(AppException) as excinfo:
+        await service.ingest(_FakeFile("fake.pdf", b"<html>not a pdf</html>"), "u1")
+    assert excinfo.value.status_code == 400
+    assert "missing %PDF header" in excinfo.value.message
+
+
+@pytest.mark.asyncio
+async def test_ingest_rejects_empty_file():
+    conn = _db()
+    service = IngestionService(conn)
+    with pytest.raises(AppException) as excinfo:
+        await service.ingest(_FakeFile("empty.pdf", b""), "u1")
+    assert excinfo.value.status_code == 400
+    assert "empty" in excinfo.value.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_ingest_sanitizes_filename(monkeypatch, tmp_path):
+    conn = _db()
+    monkeypatch.setattr(
+        "app.features.ingestion.service.settings",
+        SimpleNamespace(UPLOAD_DIR=str(tmp_path), MAX_UPLOAD_SIZE_MB=25),
+    )
+    monkeypatch.setattr(
+        "app.features.ingestion.service.job_manager",
+        SimpleNamespace(submit=lambda *a, **kw: None),
+    )
+    service = IngestionService(conn)
+    resp = await service.ingest(_FakeFile('<script>alert("xss")>.pdf', b"%PDF-1.4 safe"), "u1")
+    row = conn.execute("SELECT title, filename FROM documents WHERE id = ?", (resp.document_id,)).fetchone()
+    assert "<script>" not in row["title"]
+    assert "<script>" not in row["filename"]
 
 
 @pytest.mark.asyncio
