@@ -64,3 +64,11 @@ class ChatRepository:
             (session_id, user_id),
         )
         self.db.commit()
+
+    def update_title(self, session_id: str, title: str):
+        cursor = self.db.cursor()
+        cursor.execute(
+            "UPDATE chat_sessions SET title = ? WHERE id = ?",
+            (title, session_id),
+        )
+        self.db.commit()

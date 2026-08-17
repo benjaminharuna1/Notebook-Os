@@ -20,6 +20,73 @@ class ChatService:
         self.model_service = ModelService(db, self.settings_dict)
         self.search_service = SearchService(db)
 
+    # --- cluster context -----------------------------------------------------
+
+    def _cluster_context(self, project_id: str | None) -> str:
+        """Build a context string from the latest literature-map clusters."""
+        if not project_id:
+            return ""
+        try:
+            row = self.db.execute(
+                """SELECT graph_json FROM graph_history
+                   WHERE project_id = ? AND map_type = 'literature'
+                   ORDER BY created_at DESC, rowid DESC LIMIT 1""",
+                (project_id,),
+            ).fetchone()
+            if not row:
+                return ""
+            data = json.loads(row["graph_json"])
+            clusters = data.get("clusters", [])
+            if not clusters:
+                return ""
+            parts = []
+            for c in clusters:
+                label = c.get("label", "")
+                summary = c.get("summary", "")
+                size = c.get("size", 0)
+                if label:
+                    parts.append(f"- **{label}** ({size} papers): {summary}")
+            if not parts:
+                return ""
+            return "\n".join(parts)
+        except Exception:
+            return ""
+
+    # --- literature entries context ------------------------------------------
+
+    def _lit_entries_context(self, project_id: str | None, doc_ids: list | None) -> str:
+        """Build context from literature entries for documents matched by search."""
+        if not project_id:
+            return ""
+        try:
+            rows = self.db.execute(
+                """SELECT e.paper_id, e.research_objective, e.methodology,
+                          e.key_findings, e.limitations, e.relevance, e.citation,
+                          d.title AS title
+                   FROM literature_entries e
+                   JOIN documents d ON d.id = e.paper_id
+                   WHERE e.project_id = ? AND e.user_id IS NOT NULL""",
+                (project_id,),
+            ).fetchall()
+            if not rows:
+                return ""
+            parts = []
+            for r in rows:
+                title = r["title"] or ""
+                obj = r["research_objective"] or ""
+                findings = r["key_findings"] or ""
+                if not obj and not findings:
+                    continue
+                block = f"**{title}**"
+                if obj:
+                    block += f"\n  Research objective: {obj}"
+                if findings:
+                    block += f"\n  Key findings: {findings}"
+                parts.append(block)
+            return "\n\n".join(parts[:20])
+        except Exception:
+            return ""
+
     async def stream_chat(self, req, user_id: str):
         try:
             return await self._stream_chat(req, user_id)
@@ -34,6 +101,7 @@ class ChatService:
 
     async def _stream_chat(self, req, user_id: str):
         session_id = req.session_id or generate_id()
+        is_new_session = not req.session_id
 
         # A chat always belongs to a project. Existing sessions keep theirs;
         # new sessions require one up front so search stays scoped.
@@ -63,11 +131,17 @@ class ChatService:
 
         model = self.model_service.get_active_model(user_id)
         skill_instructions = SkillsService(self.db).active_instructions(user_id)
-        context = self.prompt_builder.build(sources, req.message, skill_instructions)
+        cluster_ctx = self._cluster_context(project_id)
+        lit_ctx = self._lit_entries_context(project_id, req.document_ids)
+        context = self.prompt_builder.build(
+            sources, req.message, skill_instructions,
+            cluster_context=cluster_ctx,
+            lit_entries_context=lit_ctx,
+        )
 
         messages = self.repo.get_messages(session_id)
         source_data = [
-            {"chunk_id": s.chunk_id, "title": s.document_title, "page": s.page_number}
+            {"chunk_id": s.chunk_id, "title": s.document_title, "page": s.page_number, "document_id": getattr(s, "document_id", None)}
             for s in sources
         ]
 
@@ -94,6 +168,14 @@ class ChatService:
                 )
             except Exception:
                 logger.exception("could not persist assistant message for %s", session_id)
+
+            # Auto-generate a session title from the first user message
+            if is_new_session:
+                try:
+                    title = req.message.strip()[:80]
+                    self.repo.update_title(session_id, title)
+                except Exception:
+                    pass
 
             yield f"data: {json.dumps({'type': 'sources', 'sources': source_data})}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"

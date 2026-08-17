@@ -1,20 +1,23 @@
 import { createSSEConnection, api } from '$lib/core/api/client';
-import type { ChatSession, ChatMessage } from './types';
+import type { ChatSession, ChatMessage, SourceChunk } from './types';
 
 export function streamChat(
   sessionId: string | undefined,
   message: string,
   projectId: string | undefined,
+  documentIds: string[] | undefined,
   onChunk: (text: string) => void,
   onDone: (sessionId: string) => void,
   onError: (error: Error) => void,
+  onSources: (sources: SourceChunk[]) => void,
 ): () => void {
   return createSSEConnection(
     '/chat',
-    { session_id: sessionId, message, project_id: projectId },
+    { session_id: sessionId, message, project_id: projectId, document_ids: documentIds ?? null },
     onChunk,
     onDone,
     onError,
+    (raw) => onSources((raw as SourceChunk[]) ?? []),
   );
 }
 
