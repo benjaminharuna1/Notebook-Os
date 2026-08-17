@@ -194,7 +194,23 @@ class GraphService:
         ).fetchone()
         if row is None:
             return None
+        try:
+            self.db.execute(
+                """UPDATE graph_history
+                   SET is_active = 0
+                   WHERE user_id = ? AND project_id = ?""",
+                (user_id, row["project_id"]),
+            )
+            self.db.execute(
+                "UPDATE graph_history SET is_active = 1 WHERE id = ?",
+                (checkpoint_id,),
+            )
+            self.db.commit()
+            is_active = True
+        except Exception:
+            is_active = bool(row["is_active"]) if "is_active" in row.keys() else False
         data = self._checkpoint_dict(row)
+        data["is_active"] = is_active
         data["graph"] = GraphResponse(**json.loads(row["graph_json"]))
         return data
 
@@ -228,12 +244,17 @@ class GraphService:
     @staticmethod
     def _checkpoint_dict(row) -> dict:
         raw = json.loads(row["graph_json"])
+        try:
+            is_active = bool(row["is_active"])
+        except (IndexError, KeyError):
+            is_active = False
         return {
             "id": row["id"],
             "project_id": row["project_id"],
             "fingerprint": row["fingerprint"],
             "prefs_key": row["prefs_key"],
             "is_favourite": bool(row["is_favourite"]),
+            "is_active": is_active,
             "created_at": row["created_at"],
             "nodes": len(raw.get("nodes", [])),
             "edges": len(raw.get("edges", [])),

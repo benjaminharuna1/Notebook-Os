@@ -46,6 +46,7 @@ class GraphCheckpoint(BaseModel):
     fingerprint: str
     prefs_key: str
     is_favourite: bool = False
+    is_active: bool = False
     created_at: str
     nodes: int
     edges: int

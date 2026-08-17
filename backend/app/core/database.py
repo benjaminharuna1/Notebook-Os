@@ -140,6 +140,7 @@ def init_sqlite_db():
             fingerprint TEXT NOT NULL,
             prefs_key   TEXT NOT NULL,
             is_favourite INTEGER NOT NULL DEFAULT 0,
+            is_active   INTEGER NOT NULL DEFAULT 0,
             map_type    TEXT DEFAULT 'concepts',
             created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -184,6 +185,7 @@ def init_sqlite_db():
         ("ALTER TABLE documents ADD COLUMN extracted_doi TEXT", None),
         ("ALTER TABLE documents ADD COLUMN metadata_candidates TEXT", None),
         ("ALTER TABLE graph_history ADD COLUMN map_type TEXT DEFAULT 'concepts'", None),
+        ("ALTER TABLE graph_history ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0", None),
         ("ALTER TABLE literature_entries ADD COLUMN user_edited TEXT", None),
     ]
     for statement, _ in migrations:

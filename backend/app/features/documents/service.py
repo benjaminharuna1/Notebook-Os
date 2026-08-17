@@ -84,6 +84,7 @@ class DocumentService:
         collection.delete(where={"document_id": document_id, "user_id": user_id})
 
         if project_id:
+            self._prune_checkpoints(user_id, project_id, [document_id])
             self._rebuild_literature(user_id, project_id)
         return {"success": True}
 
@@ -119,8 +120,58 @@ class DocumentService:
             self.repo.delete(document_id, user_id)
             collection.delete(where={"document_id": document_id, "user_id": user_id})
 
+        self._prune_checkpoints(user_id, project_id, owned)
         self._rebuild_literature(user_id, project_id)
         return {"success": True, "deleted": len(owned)}
+
+    @staticmethod
+    def _prune_checkpoints(user_id: str, project_id: str, paper_ids: list[str]) -> None:
+        """Remove deleted papers from stored literature checkpoints so old
+        graph snapshots no longer reference them."""
+        try:
+            import json as _json
+            from app.core.database import get_sqlite_connection
+
+            db = get_sqlite_connection()
+            rows = db.execute(
+                """SELECT id, graph_json FROM graph_history
+                   WHERE user_id = ? AND project_id = ? AND map_type = 'literature'""",
+                (user_id, project_id),
+            ).fetchall()
+            pid_set = set(paper_ids)
+            changed = False
+            for row in rows:
+                try:
+                    data = _json.loads(row["graph_json"])
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(data, dict):
+                    continue
+                nodes = data.get("nodes") or []
+                edges = data.get("edges") or []
+                kept_nodes = [
+                    n for n in nodes
+                    if n.get("id") not in pid_set
+                    and (n.get("meta") or {}).get("doc_id") not in pid_set
+                ]
+                if len(kept_nodes) == len(nodes):
+                    continue
+                kept_ids = {n["id"] for n in kept_nodes}
+                kept_edges = [
+                    e for e in edges
+                    if e.get("source") in kept_ids and e.get("target") in kept_ids
+                ]
+                data["nodes"] = kept_nodes
+                data["edges"] = kept_edges
+                db.execute(
+                    "UPDATE graph_history SET graph_json = ? WHERE id = ?",
+                    (_json.dumps(data), row["id"]),
+                )
+                changed = True
+            if changed:
+                db.commit()
+        except Exception:
+            pass
 
     @staticmethod
     def _rebuild_literature(user_id: str, project_id: str) -> None:

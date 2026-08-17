@@ -57,6 +57,7 @@
   let regeneratingId = $state<string | null>(null);
   let savedId = $state<string | null>(null);
   let tableError = $state('');
+  let tableMenu = $state<{ paperId: string; x: number; y: number } | null>(null);
 
   let metaModal = $state<{
     paperId: string;
@@ -145,6 +146,42 @@
       relevance: entry.relevance ?? '',
       apa_reference: entry.apa_reference ?? '',
     };
+  }
+
+  $effect(() => {
+    if (!tableMenu) return;
+    function onDocClick(e: MouseEvent) {
+      const target = e.target as Node | null;
+      if (target?.nodeType === 1 && (target as Element).closest('[data-table-menu]')) return;
+      tableMenu = null;
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') tableMenu = null;
+    }
+    function onScroll() {
+      tableMenu = null;
+    }
+    document.addEventListener('click', onDocClick);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('click', onDocClick);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  });
+
+  function openTableMenu(paperId: string, e: MouseEvent) {
+    e.stopPropagation();
+    if (tableMenu?.paperId === paperId) {
+      tableMenu = null;
+      return;
+    }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const width = 192;
+    const x = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
+    const y = rect.bottom + 4;
+    tableMenu = { paperId, x, y };
   }
 
   $effect(() => {
@@ -428,13 +465,6 @@
         >
           {exporting ? 'Exporting…' : '⇩ Export Excel'}
         </button>
-        <button
-          onclick={build}
-          disabled={building?.status === 'running'}
-          class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          ↻ Build literature map
-        </button>
       </div>
     </div>
 
@@ -603,15 +633,8 @@
             <p class="max-w-md text-sm text-slate-400">
               Your indexed documents become papers here, connected by citations and topical
               similarity, grouped into LLM-labelled themes, and summarised into an editable
-              literature matrix. The map rebuilds automatically as papers are added.
+              literature matrix. The map builds automatically as papers are added.
             </p>
-            <button
-              onclick={build}
-              disabled={building?.status === 'running'}
-              class="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600 disabled:opacity-50"
-            >
-              Build literature map
-            </button>
           </div>
         {:else}
           <KnowledgeGraph
@@ -636,30 +659,16 @@
           <div class="flex h-full min-h-[420px] flex-col items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 text-center">
             <p class="text-base font-medium text-slate-700">No literature matrix yet</p>
             <p class="max-w-md text-sm text-slate-400">
-              Build the literature map first — each paper gets an auto-generated row you can
-              edit, and the whole matrix exports to Excel.
+              Add papers and the map builds automatically — each paper gets an
+              auto-generated row you can edit, and the whole matrix exports to Excel.
             </p>
-            <button
-              onclick={build}
-              disabled={building?.status === 'running'}
-              class="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600 disabled:opacity-50"
-            >
-              Build literature map
-            </button>
           </div>
         {:else if entries.length === 0}
           <div class="flex h-full min-h-[420px] flex-col items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 text-center">
             <p class="text-base font-medium text-slate-700">Entries not generated yet</p>
             <p class="max-w-md text-sm text-slate-400">
-              Rebuild the map to generate and auto-summarise a row for every paper.
+              Once the map is built, every paper gets an auto-summarised row here.
             </p>
-            <button
-              onclick={build}
-              disabled={building?.status === 'running'}
-              class="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600 disabled:opacity-50"
-            >
-              Build literature map
-            </button>
           </div>
         {:else}
           <table class="min-w-[1500px] border-collapse text-left">
@@ -699,32 +708,15 @@
                       ></textarea>
                     </td>
                   {/each}
-                  <td class="border-b border-slate-100 p-2">
+                  <td class="w-10 border-b border-slate-100 p-2 align-top">
                     <button
-                      onclick={() => openPdf(entry.paper_id)}
-                      class="w-full rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+                      onclick={(e) => openTableMenu(entry.paper_id, e)}
+                      class="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label={`Actions for ${entry.title}`}
+                      aria-expanded={tableMenu?.paperId === entry.paper_id}
+                      title="Actions"
                     >
-                      Open PDF
-                    </button>
-                    <button
-                      onclick={() => openMetaModal(entry.paper_id)}
-                      class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                    >
-                      Edit metadata
-                    </button>
-                    <button
-                      onclick={() => saveRow(entry.paper_id)}
-                      disabled={savingId === entry.paper_id}
-                      class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
-                    >
-                      {savingId === entry.paper_id ? 'Saving…' : 'Save'}
-                    </button>
-                    <button
-                      onclick={() => regenerateRow(entry.paper_id)}
-                      disabled={regeneratingId === entry.paper_id}
-                      class="mt-1.5 w-full rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
-                    >
-                      {regeneratingId === entry.paper_id ? 'Generating…' : 'Regenerate with AI'}
+                      <span class="text-lg leading-none">⋮</span>
                     </button>
                     {#if savedId === entry.paper_id}
                       <p class="mt-1 text-center text-[10px] text-emerald-600">Saved</p>
@@ -982,6 +974,41 @@
           />
         </div>
       </div>
+    </div>
+  {/if}
+
+  {#if tableMenu}
+    <div
+      data-table-menu
+      class="fixed z-50 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+      style="left: {tableMenu.x}px; top: {tableMenu.y}px;"
+    >
+      <button
+        onclick={() => openPdf(tableMenu.paperId)}
+        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-indigo-600 hover:bg-slate-50"
+      >
+        📄 Open PDF
+      </button>
+      <button
+        onclick={() => openMetaModal(tableMenu.paperId)}
+        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-600 hover:bg-slate-50"
+      >
+        ✎ Edit metadata
+      </button>
+      <button
+        onclick={() => saveRow(tableMenu.paperId)}
+        disabled={savingId === tableMenu.paperId}
+        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+      >
+        💾 {savingId === tableMenu.paperId ? 'Saving…' : 'Save'}
+      </button>
+      <button
+        onclick={() => regenerateRow(tableMenu.paperId)}
+        disabled={regeneratingId === tableMenu.paperId}
+        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-indigo-600 hover:bg-slate-50 disabled:opacity-50"
+      >
+        ✨ {regeneratingId === tableMenu.paperId ? 'Generating…' : 'Regenerate with AI'}
+      </button>
     </div>
   {/if}
 </div>

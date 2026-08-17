@@ -687,7 +687,7 @@
 
     <div
       bind:this={tooltipEl}
-      class="pointer-events-none absolute left-0 top-0 z-10 rounded-lg border border-white/10 bg-slate-900/90 px-3 py-2 text-xs text-slate-100 shadow-xl backdrop-blur"
+      class="pointer-events-none absolute left-0 top-0 z-30 rounded-lg border border-white/10 bg-slate-900/90 px-3 py-2 text-xs text-slate-100 shadow-xl backdrop-blur"
       style="opacity: {highlighted && !dragging && nodeById(highlighted) ? 1 : 0}; transition: opacity 0.12s ease;"
       aria-hidden="true"
     >
@@ -710,7 +710,7 @@
     </div>
 
     {#if selectedNode}
-      <div class="absolute bottom-3 left-3 z-10 max-h-[75%] w-80 overflow-y-auto rounded-xl border border-white/10 bg-slate-900/85 p-3 shadow-xl backdrop-blur">
+      <div class="absolute bottom-3 left-3 z-30 max-h-[75%] w-80 overflow-y-auto rounded-xl border border-white/10 bg-slate-900/85 p-3 shadow-xl backdrop-blur">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
             <p class="truncate text-sm font-medium text-slate-100">{selectedNode.label}</p>

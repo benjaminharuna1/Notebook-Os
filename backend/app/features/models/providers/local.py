@@ -9,6 +9,7 @@ from app.features.models.providers.base import BaseLLMProvider
 from app.shared.logger import logger
 
 _model_lock = threading.Lock()
+_gen_lock = threading.Lock()
 _llm_instance = None
 _llm_path = None
 
@@ -90,17 +91,18 @@ class LocalLLMProvider(BaseLLMProvider):
 
         def _generate():
             try:
-                stream = llm.create_chat_completion(
-                    messages=llm_messages,
-                    max_tokens=self.max_tokens,
-                    temperature=self.temperature,
-                    stream=True,
-                )
-                for part in stream:
-                    delta = part["choices"][0]["delta"]
-                    token = delta.get("content")
-                    if token:
-                        q.put(token)
+                with _gen_lock:
+                    stream = llm.create_chat_completion(
+                        messages=llm_messages,
+                        max_tokens=self.max_tokens,
+                        temperature=self.temperature,
+                        stream=True,
+                    )
+                    for part in stream:
+                        delta = part["choices"][0]["delta"]
+                        token = delta.get("content")
+                        if token:
+                            q.put(token)
             except Exception as exc:  # surface errors to the async side
                 q.put(exc)
             finally:

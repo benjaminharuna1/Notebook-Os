@@ -111,7 +111,11 @@
     activeCheckpointId = null;
     handledGens = [];
     checkpointLoading = false;
-    loadHistory();
+    void loadHistory().then(() => {
+      if (!projectId) return;
+      const active = (history ?? []).find((c) => c.is_active);
+      if (active) void loadCheckpoint(active.id);
+    });
     listTrackedConcepts(projectId)
       .then((concepts) => (tracked = concepts ?? []))
       .catch(() => {
@@ -464,6 +468,9 @@
                 class="text-sm {c?.is_favourite ? 'text-amber-500' : 'text-slate-300 hover:text-amber-400'}"
               >★</button>
               <span>{formatCheckpointTime(c?.created_at ?? '')}</span>
+              {#if c?.is_active}
+                <span class="inline-block h-1.5 w-1.5 rounded-full bg-indigo-500" title="Active checkpoint"></span>
+              {/if}
               <span class="text-slate-400">{c?.nodes ?? 0}·{c?.edges ?? 0}</span>
               <button
                 type="button"

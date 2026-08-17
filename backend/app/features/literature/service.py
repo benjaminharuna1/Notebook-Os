@@ -1259,7 +1259,7 @@ class LiteratureService:
         node_rows = [
             {
                 "id": p["id"],
-                "label": (p["title"] or "Untitled"),
+                "label": self.auto_citation(p),
                 "type": "paper",
                 "weight": 1.0,
                 "cluster": node_cluster.get(p["id"]),

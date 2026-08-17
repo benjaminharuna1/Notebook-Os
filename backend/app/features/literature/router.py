@@ -188,9 +188,14 @@ async def regenerate_literature_metadata(
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
+    import asyncio
+
     service = LiteratureService(db)
-    results = service.regenerate_metadata(
-        current_user["id"], project_id, req.paper_ids
+    results = await asyncio.to_thread(
+        service.regenerate_metadata,
+        current_user["id"],
+        project_id,
+        req.paper_ids,
     )
     return {"processed": len(results), "results": results}
 

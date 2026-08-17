@@ -130,7 +130,7 @@ class LiteratureLLMService:
     # --- cluster labeling ----------------------------------------------------
 
     def cluster_inputs(self, user_id: str, project_id: str) -> List[dict]:
-        """Cluster id -> member titles from the latest literature checkpoint."""
+        """Cluster id -> member titles/doc_ids from the latest literature checkpoint."""
         try:
             row = self.db.execute(
                 """SELECT graph_json FROM graph_history
@@ -149,8 +149,19 @@ class LiteratureLLMService:
         for node in data.get("nodes", []):
             cid = node.get("cluster")
             if cid:
-                by_cluster.setdefault(cid, []).append(node.get("label", ""))
-        return [{"id": cid, "titles": titles} for cid, titles in by_cluster.items()]
+                meta = node.get("meta") or {}
+                by_cluster.setdefault(cid, []).append({
+                    "label": node.get("label", ""),
+                    "doc_id": meta.get("doc_id"),
+                })
+        return [
+            {
+                "id": cid,
+                "titles": [m["label"] for m in members],
+                "doc_ids": [m["doc_id"] for m in members if m.get("doc_id")],
+            }
+            for cid, members in by_cluster.items()
+        ]
 
     async def label_clusters(
         self,
@@ -509,10 +520,10 @@ class LiteratureLLMService:
 
     def cluster_sources(self, user_id: str, project_id: str, cluster_id: str) -> List[dict]:
         inputs = self.cluster_inputs(user_id, project_id)
-        titles = next((c["titles"] for c in inputs if c["id"] == cluster_id), [])
-        if not titles:
+        cluster = next((c for c in inputs if c["id"] == cluster_id), None)
+        if not cluster:
             return []
-        title_set = {t.lower() for t in titles}
+        doc_ids = set(cluster.get("doc_ids") or [])
         rows = self.db.execute(
             """SELECT c.document_id, c.content, c.page_number, d.title AS title
                FROM chunks c
@@ -522,8 +533,13 @@ class LiteratureLLMService:
         ).fetchall()
         per_doc: dict = {}
         for row in rows:
-            if (row["title"] or "").lower() not in title_set:
-                continue
+            if doc_ids:
+                if row["document_id"] not in doc_ids:
+                    continue
+            else:
+                title_set = {t.lower() for t in cluster.get("titles", [])}
+                if (row["title"] or "").lower() not in title_set:
+                    continue
             per_doc.setdefault(row["document_id"], []).append(row)
         selected = []
         for doc_rows in per_doc.values():

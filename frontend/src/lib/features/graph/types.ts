@@ -81,6 +81,7 @@ export interface GraphCheckpoint {
   fingerprint: string;
   prefs_key: string;
   is_favourite: boolean;
+  is_active: boolean;
   created_at: string;
   nodes: number;
   edges: number;
