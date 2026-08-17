@@ -9,6 +9,7 @@ class PromptBuilder:
         skill_instructions: str = "",
         cluster_context: str = "",
         lit_entries_context: str = "",
+        slash_extra: str = "",
     ) -> str:
         context_parts = []
         for s in sources:
@@ -31,6 +32,12 @@ Use Markdown formatting for your answers: headers for sections, bullet lists for
             prompt += (
                 "\n\nActive skills you should follow:\n"
                 f"{skill_instructions}"
+            )
+
+        if slash_extra:
+            prompt += (
+                "\n\nSpecial instruction for this request:\n"
+                f"{slash_extra}"
             )
 
         if cluster_context:

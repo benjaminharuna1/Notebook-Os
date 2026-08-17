@@ -72,3 +72,27 @@ class ChatRepository:
             (title, session_id),
         )
         self.db.commit()
+
+    def delete_messages_from(self, session_id: str, message_id: str):
+        """Delete a message and all messages after it in the session."""
+        cursor = self.db.cursor()
+        cursor.execute(
+            "SELECT created_at FROM chat_messages WHERE id = ? AND session_id = ?",
+            (message_id, session_id),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return
+        cursor.execute(
+            "DELETE FROM chat_messages WHERE session_id = ? AND created_at >= ?",
+            (session_id, row["created_at"]),
+        )
+        self.db.commit()
+
+    def update_message_content(self, message_id: str, content: str):
+        cursor = self.db.cursor()
+        cursor.execute(
+            "UPDATE chat_messages SET content = ? WHERE id = ?",
+            (content, message_id),
+        )
+        self.db.commit()

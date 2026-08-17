@@ -77,14 +77,12 @@
     toasts.add('Generation stopped.', 'info');
   }
 
-  async function sendMessage(text: string) {
-    const userMsg: ChatMessageType = {
-      id: crypto.randomUUID(),
-      session_id: sessionId || '',
-      role: 'user',
-      content: text,
-    };
-    messages.update((m) => [...m, userMsg]);
+  // --- shared streaming logic ---
+  function startStreaming(
+    userText: string,
+    slashCommand?: string,
+    options?: { regenerate?: boolean },
+  ) {
     streaming.set(true);
 
     const assistantMsg: ChatMessageType = {
@@ -100,7 +98,122 @@
 
     abortFn = streamChat(
       sessionId || undefined,
-      text,
+      userText,
+      projectId,
+      docIds,
+      (chunk) => {
+        messages.update((m) => {
+          const last = m[m.length - 1];
+          if (last && last.id === assistantId) {
+            last.content += chunk;
+          }
+          return m;
+        });
+      },
+      (sources: SourceChunk[]) => {
+        messages.update((m) => {
+          const last = m[m.length - 1];
+          if (last && last.id === assistantId) {
+            last.sources = sources;
+          }
+          return m;
+        });
+      },
+      (sid) => {
+        streaming.set(false);
+        abortFn = null;
+        // Fetch model_used from the last assistant message we just populated
+        messages.update((m) => {
+          const last = m[m.length - 1];
+          if (last && last.id === assistantId) {
+            // model_used is injected server-side on persist; we won't have it
+            // on the live SSE message, but it shows on reload from DB.
+          }
+          return m;
+        });
+        if (sid) {
+          if (!sessionId) sessionId = sid;
+          const path = projectId ? `/projects/${projectId}/chat/${sid}` : `/chat/${sid}`;
+          if (urlSessionId !== sid) goto(path);
+        }
+      },
+      failAssistant,
+      options,
+    );
+  }
+
+  // --- Feature 8: Edit / Regenerate ---
+  function handleSendMessage(text: string, slashCommand?: string) {
+    const userMsg: ChatMessageType = {
+      id: crypto.randomUUID(),
+      session_id: sessionId || '',
+      role: 'user',
+      content: text,
+    };
+    messages.update((m) => [...m, userMsg]);
+    startStreaming(text, slashCommand);
+  }
+
+  function handleEditMessage(messageId: string, newContent: string) {
+    // Remove everything from this message onward, then resend
+    messages.update((m) => {
+      const idx = m.findIndex((msg) => msg.id === messageId);
+      if (idx === -1) return m;
+      return m.slice(0, idx);
+    });
+    // Send as if fresh — backend regenerates
+    const userMsg: ChatMessageType = {
+      id: crypto.randomUUID(),
+      session_id: sessionId || '',
+      role: 'user',
+      content: newContent,
+    };
+    messages.update((m) => [...m, userMsg]);
+    startStreaming(newContent);
+  }
+
+  function handleRegenerate(messageId: string) {
+    // Find the message, remove it and everything after it
+    let userText = '';
+    messages.update((m) => {
+      const idx = m.findIndex((msg) => msg.id === messageId);
+      if (idx === -1) return m;
+      const msg = m[idx];
+      // If it's a user message, we need its content to resend
+      if (msg.role === 'user') {
+        userText = msg.content;
+      } else {
+        // Assistant message: find the preceding user message
+        for (let i = idx - 1; i >= 0; i--) {
+          if (m[i].role === 'user') {
+            userText = m[i].content;
+            break;
+          }
+        }
+      }
+      return m.slice(0, idx);
+    });
+    if (!userText) {
+      toasts.add('Cannot regenerate: no user message found', 'error');
+      return;
+    }
+    // Resend with regenerate flag
+    streaming.set(true);
+
+    const assistantMsg: ChatMessageType = {
+      id: crypto.randomUUID(),
+      session_id: sessionId || '',
+      role: 'assistant',
+      content: '',
+    };
+    messages.update((m) => [...m, assistantMsg]);
+    const assistantId = assistantMsg.id;
+
+    const docIds = selectedDocIds.size > 0 ? [...selectedDocIds] : undefined;
+
+    abortFn = streamChat(
+      sessionId || undefined,
+      userText,
       projectId,
       docIds,
       (chunk) => {
@@ -131,7 +244,28 @@
         }
       },
       failAssistant,
+      { regenerate: true },
     );
+  }
+
+  // --- Feature 10: Error retry ---
+  function handleRetry() {
+    // Find the last user message, then strip the error and resend
+    let userText = '';
+    messages.update((m) => {
+      for (let i = m.length - 1; i >= 0; i--) {
+        if (m[i].role === 'user') {
+          userText = m[i].content;
+          break;
+        }
+      }
+      // Remove the error assistant message
+      if (m.length > 0 && m[m.length - 1].role === 'assistant') {
+        m.pop();
+      }
+      return m;
+    });
+    if (userText) startStreaming(userText);
   }
 
   function scrollToBottom(node: HTMLDivElement) {
@@ -155,7 +289,12 @@
     use:scrollToBottom
   >
     {#each $messages as msg (msg.id)}
-      <ChatMessage message={msg} />
+      <ChatMessage
+        message={msg}
+        onEdit={handleEditMessage}
+        onRegenerate={handleRegenerate}
+        onRetry={!$streaming ? handleRetry : undefined}
+      />
     {/each}
     {#if $messages.length === 0}
       <div class="flex h-full items-center justify-center text-slate-400">
@@ -216,5 +355,5 @@
     </div>
   {/if}
 
-  <ChatInput onsend={sendMessage} onStop={stopStreaming} disabled={false} isStreaming={$streaming} />
+  <ChatInput onsend={handleSendMessage} onStop={stopStreaming} disabled={false} isStreaming={$streaming} />
 </div>

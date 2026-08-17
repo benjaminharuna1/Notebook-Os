@@ -10,10 +10,18 @@ export function streamChat(
   onDone: (sessionId: string) => void,
   onError: (error: Error) => void,
   onSources: (sources: SourceChunk[]) => void,
+  options?: { regenerate?: boolean; slashCommand?: string },
 ): () => void {
   return createSSEConnection(
     '/chat',
-    { session_id: sessionId, message, project_id: projectId, document_ids: documentIds ?? null },
+    {
+      session_id: sessionId,
+      message,
+      project_id: projectId,
+      document_ids: documentIds ?? null,
+      regenerate: options?.regenerate ?? false,
+      slash_command: options?.slashCommand ?? null,
+    },
     onChunk,
     onDone,
     onError,

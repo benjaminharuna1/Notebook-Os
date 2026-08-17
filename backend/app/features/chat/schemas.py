@@ -8,6 +8,8 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None
     document_ids: Optional[List[str]] = None
     project_id: Optional[str] = None
+    regenerate: Optional[bool] = None
+    slash_command: Optional[str] = None
 
 
 class ChatMessage(BaseModel):

@@ -87,6 +87,30 @@ class ChatService:
         except Exception:
             return ""
 
+    # --- slash commands ------------------------------------------------------
+
+    SLASH_COMMANDS = {
+        "/summarize": (
+            "Provide a comprehensive summary of the project's literature. "
+            "Cover all papers, organized by theme or methodology. "
+            "Use APA 7th edition parenthetical citations for every claim."
+        ),
+        "/evaluate": (
+            "Critically evaluate the body of literature in this project. "
+            "Assess strengths, weaknesses, methodological rigor, and identify gaps. "
+            "Use APA 7th edition parenthetical citations for every claim."
+        ),
+        "/mapping": (
+            "Produce a structured literature mapping: group papers by theme, "
+            "identify connections and contradictions, and suggest future directions. "
+            "Use APA 7th edition parenthetical citations for every claim."
+        ),
+    }
+
+    def _apply_slash_command(self, command: str) -> str:
+        cmd = command.strip().lower().split()[0] if command.strip() else ""
+        return self.SLASH_COMMANDS.get(cmd, "")
+
     async def stream_chat(self, req, user_id: str):
         try:
             return await self._stream_chat(req, user_id)
@@ -116,12 +140,31 @@ class ChatService:
                 self._require_project(user_id, project_id)
             self.repo.create_session(session_id, user_id, "New Chat", project_id=project_id)
 
-        self.repo.add_message(session_id, "user", req.message)
+        # --- regenerate: delete everything from the last user message onward
+        effective_message = req.message
+        if req.regenerate and req.session_id:
+            existing = self.repo.get_messages(session_id)
+            last_user = None
+            for m in reversed(existing):
+                if m["role"] == "user":
+                    last_user = m
+                    break
+            if last_user:
+                effective_message = last_user["content"]
+                self.repo.delete_messages_from(session_id, last_user["id"])
+            # If no user message found, fall through with the incoming message
+
+        self.repo.add_message(session_id, "user", effective_message)
+
+        # --- slash command handling ---
+        slash_extra = ""
+        if req.slash_command:
+            slash_extra = self._apply_slash_command(req.slash_command)
 
         from app.features.search.schemas import SearchRequest
 
         search_req = SearchRequest(
-            query=req.message,
+            query=effective_message,
             top_k=req.top_k if hasattr(req, "top_k") else 5,
             document_ids=req.document_ids,
             project_id=project_id,
@@ -134,9 +177,10 @@ class ChatService:
         cluster_ctx = self._cluster_context(project_id)
         lit_ctx = self._lit_entries_context(project_id, req.document_ids)
         context = self.prompt_builder.build(
-            sources, req.message, skill_instructions,
+            sources, effective_message, skill_instructions,
             cluster_context=cluster_ctx,
             lit_entries_context=lit_ctx,
+            slash_extra=slash_extra,
         )
 
         messages = self.repo.get_messages(session_id)
