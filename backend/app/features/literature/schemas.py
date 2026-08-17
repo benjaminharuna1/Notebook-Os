@@ -83,6 +83,10 @@ class LiteratureMetadataUpdate(BaseModel):
     pages: Optional[str] = None
     publisher: Optional[str] = None
     url: Optional[str] = None
+    paper_type: Optional[str] = None
+    edition: Optional[str] = None
+    issn: Optional[str] = None
+    isbn: Optional[str] = None
 
 
 class LiteratureCandidateApply(BaseModel):

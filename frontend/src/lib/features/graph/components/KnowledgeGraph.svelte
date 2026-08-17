@@ -755,6 +755,9 @@
             {/if}
               </p>
             {/if}
+            {#if meta.paper_type}
+              <p><span class="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-300">{meta.paper_type.replace(/_/g, ' ')}</span></p>
+            {/if}
             {#if meta.doi}
               <p class="break-all"><span class="text-slate-500">DOI: </span>{meta.doi}</p>
             {/if}

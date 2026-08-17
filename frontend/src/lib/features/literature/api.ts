@@ -100,12 +100,16 @@ export interface LiteratureMetadata {
   verification_status?: string | null;
   metadata_user_edited?: boolean;
   extracted_doi?: string | null;
+  paper_type?: string | null;
+  edition?: string | null;
+  issn?: string | null;
+  isbn?: string | null;
   candidates?: MetadataCandidate[];
 }
 
 export type LiteratureMetadataFields = Pick<
   LiteratureMetadata,
-  'title' | 'authors' | 'year' | 'doi' | 'abstract' | 'journal' | 'volume' | 'issue' | 'pages' | 'publisher' | 'url'
+  'title' | 'authors' | 'year' | 'doi' | 'abstract' | 'journal' | 'volume' | 'issue' | 'pages' | 'publisher' | 'url' | 'paper_type' | 'edition' | 'issn' | 'isbn'
 >;
 
 export async function getPaperMetadata(

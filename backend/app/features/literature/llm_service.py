@@ -7,8 +7,8 @@ from app.features.literature.metadata import title_case
 from app.features.models.service import ModelService
 
 ENTRY_KEYS = ("research_objective", "methodology", "key_findings", "limitations", "relevance")
-MAX_PAPER_CHUNKS = 10
-CHUNK_CHAR_CAP = 2000
+MAX_PAPER_CHUNKS = 15
+CHUNK_CHAR_CAP = 2500
 
 _FALLBACK_MARK = "LLM unavailable — derived from abstract."
 _METHOD_HINTS = (
@@ -25,17 +25,40 @@ _METHOD_HINTS = (
 )
 
 METADATA_SYSTEM_PROMPT = (
-    "You extract bibliographic metadata from the first page of a research paper. "
-    "The page shows the journal name, author name(s), the paper's own title, the "
-    "publication year, a link/DOI and often an ISSN, volume, issue, page range, "
-    "publisher and the abstract. Reply with STRICT JSON only, using exactly these "
-    'keys: "title" (string), "authors" (array of strings in "Family, Given" format), '
-    '"year" (integer or null), "doi" (string like "10.1000/xyz" or null), "journal" '
-    '(string or null), "volume" (string or null), "issue" (string or null), "pages" '
-    '(string like "12-34" or null), "publisher" (string or null), "issn" (string or '
-    'null), "abstract" (string — the paper\'s abstract text shown on the page, or '
-    'null if no abstract is present). "title" must be the paper title, NOT the '
-    "journal name. If a field cannot be determined use null or an empty array."
+    "You extract bibliographic metadata from the first page of a document. "
+    "The page may show a journal name, author name(s), the document's own title, the "
+    "publication year, a link/DOI, and often an ISSN, volume, issue, page range, "
+    "publisher, abstract, edition number, or ISBN.\n\n"
+    "Reply with STRICT JSON only, using exactly these keys:\n"
+    '- "title" (string — the document title, NOT the journal/container name)\n'
+    '- "authors" (array of strings in "Family, Given" format)\n'
+    '- "year" (integer or null)\n'
+    '- "doi" (string like "10.1000/xyz123" or null — ONLY if a DOI is clearly '
+    'printed on the page; never invent or guess a DOI)\n'
+    '- "journal" (string — journal or container name, or null)\n'
+    '- "volume" (string or null)\n'
+    '- "issue" (string or null)\n'
+    '- "pages" (string like "12-34" or null)\n'
+    '- "publisher" (string or null)\n'
+    '- "issn" (string or null — the ISSN printed on the page)\n'
+    '- "isbn" (string or null — an ISBN printed on the page, for books/textbooks)\n'
+    '- "abstract" (string — the abstract text shown on the page, or null)\n'
+    '- "paper_type" (string — exactly one of: "journal_article", "conference_paper", '
+    '"textbook", "preprint", "thesis", "newspaper", "other")\n'
+    '- "edition" (string or null — e.g. "3rd", "Second Edition", for textbooks/books)\n\n'
+    "Paper type guidelines:\n"
+    '- "journal_article": Published in a named journal, has ISSN, volume/issue\n'
+    '- "conference_paper": Published in conference proceedings, has conference name\n'
+    '- "textbook": Has edition number, ISBN, educational publisher\n'
+    '- "preprint": arXiv, SSRN, bioRxiv, EdArXiv headers; no peer-review markers\n'
+    '- "thesis": University/department header, "submitted in partial fulfillment"\n'
+    '- "newspaper": Newspaper masthead, article-style layout\n'
+    '- "other": Does not fit any of the above\n\n'
+    "Critical rules:\n"
+    '- If you cannot find a DOI printed on the page, set doi to null. Do NOT '
+    "invent or guess DOIs.\n"
+    '- "title" must be the document title, NOT the journal name.\n'
+    '- If a field cannot be determined, use null or an empty array.'
 )
 
 MAX_METADATA_TEXT_CHARS = 4000
@@ -339,36 +362,49 @@ class LiteratureLLMService:
         if not excerpts:
             excerpts = ["[No full text available — rely on the title and abstract.]"]
         system = (
-            "You are a research analyst building a literature review matrix. "
-            "For the given paper, produce five concise fields that populate a "
-            "literature-mapping table. Reply with STRICT JSON only: a single JSON "
-            "object with exactly these five keys and nothing else — no markdown "
-            "code fences, no prose before or after, no extra keys:\n"
+            "You are a research analyst performing a deep reading of a paper to "
+            "populate a literature review matrix. The paper's full text is provided "
+            "as numbered excerpts spanning the Introduction, Methods, Results, and "
+            "Discussion/Conclusion sections.\n\n"
+            "Your task: produce five concise fields as STRICT JSON — a single JSON "
+            "object with exactly these five keys and nothing else:\n"
             '{"research_objective": "...", "methodology": "...", '
-            '"key_findings": "...", "limitations": "...", "relevance": "..."}\n'
-            "Field definitions:\n"
-            '- "research_objective": the paper\'s primary purpose, research question or hypothesis.\n'
-            '- "methodology": research design, data sources, sample size/demographics, analysis approach.\n'
-            '- "key_findings": the paper\'s main empirical or theoretical conclusions.\n'
-            '- "limitations": constrained samples, bias, scope limits, unaddressed variables.\n'
-            '- "relevance": how this study could inform the researcher\'s own work '
-            "(supports a method, contradicts a theory, provides context).\n"
+            '"key_findings": "...", "limitations": "...", "relevance": "..."}\n\n'
+            "Field definitions and WHERE to find each:\n"
+            "- research_objective: Look in the Introduction section for the research "
+            "question, hypothesis, or stated purpose. Often in the first 1-2 paragraphs "
+            "of the body text. State it precisely — do not guess from the title alone.\n"
+            "- methodology: Look in the Methods/Methodology section for: research design "
+            "(experimental, survey, case study, etc.), data sources, sample size and "
+            "demographics, analytical techniques (regression, thematic analysis, etc.), "
+            "and any instruments or frameworks used. Include specific details like sample "
+            "size (e.g. 'n=342 university students') when available.\n"
+            "- key_findings: Look in the Results and Discussion sections for the main "
+            "empirical or theoretical conclusions. Include specific numbers, effect sizes, "
+            "or statistical significance when stated. Do not just paraphrase the abstract.\n"
+            "- limitations: Look in the Discussion or Limitations section for acknowledged "
+            "weaknesses — small samples, selection bias, scope limits, unaddressed "
+            "confounders, generalizability concerns.\n"
+            "- relevance: Based on all of the above, explain how this study could inform "
+            "a literature review — what methodology it supports or challenges, what context "
+            "it provides, or what gap it fills.\n\n"
             "Rules:\n"
-            "- Every value must be 2-4 sentences, grounded in the paper's title, "
-            "abstract and the excerpts below; do not invent facts.\n"
-            "- The excerpts span the paper's sections (Introduction, Methods, "
-            "Results, Discussion/Conclusion). Do not rely on the abstract alone: "
-            "the abstract often omits methodology, effect sizes and limitations, "
-            "so locate each field in the relevant section of the body text.\n"
-            "- Never leave a field empty. If the paper is silent on a field, write "
-            '"Not stated in the paper."\n'
-            "- No markdown code fences, no commentary, no keys other than the five above."
+            "- Every value must be 2-4 sentences, grounded in the EXCERPTS below. Do not "
+            "invent facts not present in the text.\n"
+            "- Do NOT rely on the abstract alone. The abstract often omits methodology "
+            "details, effect sizes, sample specifics, and limitations. Search the full "
+            "body text for each field.\n"
+            "- If the paper genuinely does not address a field, write 'Not stated in the "
+            "paper.' — do not guess.\n"
+            "- No markdown code fences, no commentary before or after the JSON, no extra keys."
         )
         user_prompt = (
             "\n\n".join(header)
             + "\n\n"
             + "\n\n".join(excerpts)
-            + '\n\nReturn only the JSON object now.'
+            + "\n\nRead the full excerpts carefully. Extract each field from the "
+            "most relevant section of the body text, not just the abstract.\n"
+            "Return only the JSON object now."
         )
         return system, user_prompt
 
@@ -410,6 +446,8 @@ class LiteratureLLMService:
             return
         if overwrite:
             merged = {key: (fields.get(key) or None) for key in ENTRY_KEYS}
+            merged["citation"] = service.auto_citation(paper)
+            merged["apa_reference"] = paper.get("apa_reference") or service.apa_reference(paper)
             service.upsert_entry(
                 paper["id"], user_id, project_id, merged, auto=False, auto_generated=True
             )

@@ -187,6 +187,10 @@ def init_sqlite_db():
         ("ALTER TABLE graph_history ADD COLUMN map_type TEXT DEFAULT 'concepts'", None),
         ("ALTER TABLE graph_history ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0", None),
         ("ALTER TABLE literature_entries ADD COLUMN user_edited TEXT", None),
+        ("ALTER TABLE documents ADD COLUMN paper_type TEXT", None),
+        ("ALTER TABLE documents ADD COLUMN edition TEXT", None),
+        ("ALTER TABLE documents ADD COLUMN issn TEXT", None),
+        ("ALTER TABLE documents ADD COLUMN isbn TEXT", None),
     ]
     for statement, _ in migrations:
         try:

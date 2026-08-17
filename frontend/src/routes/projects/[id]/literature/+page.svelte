@@ -74,6 +74,10 @@
     url: string;
     apaReference: string;
     fileType: string;
+    paperType: string;
+    edition: string;
+    issn: string;
+    isbn: string;
     candidates: MetadataCandidate[];
   } | null>(null);
   let metaLoading = $state(false);
@@ -323,6 +327,10 @@
         url: meta.url ?? '',
         apaReference: meta.apa_reference ?? '',
         fileType: meta.file_type ?? 'pdf',
+        paperType: meta.paper_type ?? '',
+        edition: meta.edition ?? '',
+        issn: meta.issn ?? '',
+        isbn: meta.isbn ?? '',
         candidates: meta.candidates ?? [],
       };
     } catch (e) {
@@ -352,6 +360,10 @@
         publisher: meta.publisher ?? '',
         url: meta.url ?? '',
         apaReference: meta.apa_reference ?? '',
+        paperType: meta.paper_type ?? '',
+        edition: meta.edition ?? '',
+        issn: meta.issn ?? '',
+        isbn: meta.isbn ?? '',
         candidates: meta.candidates ?? [],
       };
       const paperId = metaModal.paperId;
@@ -406,6 +418,10 @@
         pages: metaModal.pages,
         publisher: metaModal.publisher,
         url: metaModal.url,
+        paper_type: metaModal.paperType || null,
+        edition: metaModal.edition || null,
+        issn: metaModal.issn || null,
+        isbn: metaModal.isbn || null,
       });
       const paperId = metaModal.paperId;
       metaModal = null;
@@ -774,6 +790,24 @@
             {/if}
             <div>
               <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Document Type
+              </label>
+              <select
+                bind:value={metaModal.paperType}
+                class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+              >
+                <option value="">Auto-detect</option>
+                <option value="journal_article">Journal Article</option>
+                <option value="conference_paper">Conference Paper</option>
+                <option value="textbook">Textbook / Book</option>
+                <option value="preprint">Preprint</option>
+                <option value="thesis">Thesis / Dissertation</option>
+                <option value="newspaper">Newspaper / Magazine</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Title
               </label>
               <input
@@ -803,59 +837,131 @@
                   class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
                 />
               </div>
-              <div>
-                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  DOI
-                </label>
-                <input
-                  bind:value={metaModal.doi}
-                  placeholder="10.1000/xyz123"
-                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
-                />
-              </div>
+              {#if metaModal.paperType !== 'textbook'}
+                <div>
+                  <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    DOI
+                  </label>
+                  <input
+                    bind:value={metaModal.doi}
+                    placeholder="10.1000/xyz123"
+                    class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                  />
+                </div>
+              {/if}
             </div>
+            {#if metaModal.paperType === 'textbook'}
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Edition
+                  </label>
+                  <input
+                    bind:value={metaModal.edition}
+                    placeholder="3rd"
+                    class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    ISBN
+                  </label>
+                  <input
+                    bind:value={metaModal.isbn}
+                    placeholder="978-0-123456-78-9"
+                    class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+            {/if}
             <div>
               <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Journal
+                {metaModal.paperType === 'newspaper' ? 'Newspaper Name' : 'Journal / Container'}
               </label>
               <input
                 bind:value={metaModal.journal}
-                placeholder="Journal of Example Research"
+                placeholder={metaModal.paperType === 'newspaper' ? 'The Guardian' : 'Journal of Example Research'}
                 class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
               />
             </div>
-            <div class="grid grid-cols-3 gap-3">
-              <div>
+            {#if metaModal.paperType === 'journal_article' || metaModal.paperType === 'conference_paper'}
+              <div class="grid grid-cols-3 gap-3">
+                <div>
+                  <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Volume
+                  </label>
+                  <input
+                    bind:value={metaModal.volume}
+                    placeholder="15"
+                    class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Issue
+                  </label>
+                  <input
+                    bind:value={metaModal.issue}
+                    placeholder="2"
+                    class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Pages
+                  </label>
+                  <input
+                    bind:value={metaModal.pages}
+                    placeholder="12-34"
+                    class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+              <div class="mt-3">
                 <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Volume
+                  ISSN
                 </label>
                 <input
-                  bind:value={metaModal.volume}
-                  placeholder="15"
+                  bind:value={metaModal.issn}
+                  placeholder="1234-5678"
                   class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
                 />
               </div>
-              <div>
-                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Issue
-                </label>
-                <input
-                  bind:value={metaModal.issue}
-                  placeholder="2"
-                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
-                />
-              </div>
+            {:else if metaModal.paperType === 'newspaper'}
               <div>
                 <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Pages
                 </label>
                 <input
                   bind:value={metaModal.pages}
-                  placeholder="12-34"
+                  placeholder="A1, A4"
                   class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
                 />
               </div>
-            </div>
+            {:else if !metaModal.paperType || metaModal.paperType === 'other' || metaModal.paperType === 'preprint' || metaModal.paperType === 'thesis'}
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Volume
+                  </label>
+                  <input
+                    bind:value={metaModal.volume}
+                    placeholder="15"
+                    class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Issue
+                  </label>
+                  <input
+                    bind:value={metaModal.issue}
+                    placeholder="2"
+                    class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+            {/if}
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -867,16 +973,18 @@
                   class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
                 />
               </div>
-              <div>
-                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Link / URL
-                </label>
-                <input
-                  bind:value={metaModal.url}
-                  placeholder="https://..."
-                  class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
-                />
-              </div>
+              {#if metaModal.paperType !== 'textbook'}
+                <div>
+                  <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Link / URL
+                  </label>
+                  <input
+                    bind:value={metaModal.url}
+                    placeholder="https://..."
+                    class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+                  />
+                </div>
+              {/if}
             </div>
             <div>
               <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">

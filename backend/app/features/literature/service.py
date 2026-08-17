@@ -113,6 +113,11 @@ class LiteratureService:
                 cur.execute(f"ALTER TABLE documents ADD COLUMN {column} TEXT")
             except Exception:
                 pass
+        for column in ("paper_type", "edition", "issn", "isbn"):
+            try:
+                cur.execute(f"ALTER TABLE documents ADD COLUMN {column} TEXT")
+            except Exception:
+                pass
         self.db.commit()
 
     # --- papers -------------------------------------------------------------
@@ -121,7 +126,8 @@ class LiteratureService:
         rows = self.db.execute(
             """SELECT id, title, author, year, doi, abstract, verification_status,
                       apa_reference, authors, metadata_user_edited, filename,
-                      journal, volume, issue, pages, publisher, url
+                      journal, volume, issue, pages, publisher, url,
+                      paper_type, edition, issn, isbn
                FROM documents
                WHERE user_id = ? AND project_id = ?
                ORDER BY title COLLATE NOCASE""",
@@ -159,6 +165,10 @@ class LiteratureService:
             "pages": row["pages"] if "pages" in row.keys() else None,
             "publisher": row["publisher"] if "publisher" in row.keys() else None,
             "url": row["url"] if "url" in row.keys() else None,
+            "paper_type": row["paper_type"] if "paper_type" in row.keys() else None,
+            "edition": row["edition"] if "edition" in row.keys() else None,
+            "issn": row["issn"] if "issn" in row.keys() else None,
+            "isbn": row["isbn"] if "isbn" in row.keys() else None,
         }
 
     # --- editable literature entries ----------------------------------------
@@ -384,7 +394,8 @@ class LiteratureService:
             """SELECT id, title, author, year, doi, abstract, verification_status,
                       apa_reference, authors, metadata_user_edited, file_type,
                       extracted_doi, metadata_candidates,
-                      journal, volume, issue, pages, publisher, url
+                      journal, volume, issue, pages, publisher, url,
+                      paper_type, edition, issn, isbn
                FROM documents
                WHERE id = ? AND user_id = ? AND project_id = ?""",
             (paper_id, user_id, project_id),
@@ -424,6 +435,10 @@ class LiteratureService:
             "metadata_user_edited": paper["metadata_user_edited"],
             "file_type": row["file_type"] if "file_type" in row.keys() else None,
             "extracted_doi": row["extracted_doi"] if "extracted_doi" in row.keys() else None,
+            "paper_type": row["paper_type"] if "paper_type" in row.keys() else None,
+            "edition": row["edition"] if "edition" in row.keys() else None,
+            "issn": row["issn"] if "issn" in row.keys() else None,
+            "isbn": row["isbn"] if "isbn" in row.keys() else None,
             "candidates": candidates,
         }
 
@@ -475,7 +490,8 @@ class LiteratureService:
         if paper is None:
             return None
         for key in ("authors", "year", "doi", "abstract", "title", "journal",
-                    "volume", "issue", "pages", "publisher", "url"):
+                    "volume", "issue", "pages", "publisher", "url",
+                    "paper_type", "edition", "issn", "isbn"):
             if key not in fields:
                 continue
             value = fields[key]
@@ -486,6 +502,8 @@ class LiteratureService:
                 paper["title"] = title_case(value) or paper["title"]
             elif key == "year":
                 paper["year"] = value
+            elif key == "paper_type":
+                paper["paper_type"] = (value or "").strip() or None
             else:
                 paper[key] = (value or "").strip() or None
 
@@ -509,7 +527,8 @@ class LiteratureService:
                SET title = ?, authors = ?, year = ?, doi = ?, abstract = ?,
                    journal = ?, volume = ?, issue = ?, pages = ?, publisher = ?,
                    url = ?, apa_reference = ?, verification_status = NULL,
-                   metadata_user_edited = 1
+                   metadata_user_edited = 1,
+                   paper_type = ?, edition = ?, issn = ?, isbn = ?
                WHERE id = ?""",
             (
                 paper["title"],
@@ -524,6 +543,10 @@ class LiteratureService:
                 paper.get("publisher"),
                 paper.get("url"),
                 apa,
+                paper.get("paper_type"),
+                paper.get("edition"),
+                paper.get("issn"),
+                paper.get("isbn"),
                 paper_id,
             ),
         )
@@ -708,6 +731,10 @@ class LiteratureService:
         if not heuristic or len(heuristic) < 10:
             paper["verification_status"] = None
             paper["metadata_candidates"] = []
+            paper.setdefault("paper_type", None)
+            paper.setdefault("edition", None)
+            paper.setdefault("issn", None)
+            paper.setdefault("isbn", None)
             return paper
 
         if paper["extracted_doi"]:
@@ -717,6 +744,8 @@ class LiteratureService:
                 self._apply_record(paper, record, verified=True)
                 paper["metadata_candidates"] = []
                 return paper
+            else:
+                paper["extracted_doi"] = None
 
         llm_fields = self._ai_extract(user_id, first_page, paper.get("filename"))
         ai_candidate = self._ai_candidate(llm_fields)
@@ -725,8 +754,11 @@ class LiteratureService:
             if record:
                 record["title"] = record["title"] or ai_candidate["title"]
                 self._apply_record(paper, record, verified=True)
+                self._apply_ai_type(paper, ai_candidate)
                 paper["metadata_candidates"] = []
                 return paper
+            else:
+                ai_candidate["doi"] = None
 
         query_title = (ai_candidate or {}).get("title") or heuristic
         external = metadata_sources.crossref_by_title(query_title)
@@ -738,6 +770,7 @@ class LiteratureService:
                 paper, first_page, best, llm_fields
             )
             self._apply_record(paper, best, verified=verified)
+            self._apply_ai_type(paper, ai_candidate)
             if verified:
                 paper["metadata_candidates"] = []
                 return paper
@@ -803,6 +836,10 @@ class LiteratureService:
             "pages": (fields.get("pages") or "").strip() or None,
             "publisher": (fields.get("publisher") or "").strip() or None,
             "url": (fields.get("url") or "").strip() or None,
+            "paper_type": (fields.get("paper_type") or "").strip() or None,
+            "edition": (fields.get("edition") or "").strip() or None,
+            "issn": (fields.get("issn") or "").strip() or None,
+            "isbn": (fields.get("isbn") or "").strip() or None,
         }
 
     @staticmethod
@@ -830,8 +867,25 @@ class LiteratureService:
             paper["pages"] = (record.get("pages") or "").strip() or paper.get("pages")
             paper["publisher"] = (record.get("publisher") or "").strip() or paper.get("publisher")
             paper["url"] = (record.get("url") or "").strip() or paper.get("url")
+            paper["issn"] = (record.get("issn") or "").strip() or paper.get("issn")
+            paper["isbn"] = (record.get("isbn") or "").strip() or paper.get("isbn")
+            if record.get("paper_type"):
+                paper["paper_type"] = record["paper_type"]
+            if record.get("edition"):
+                paper["edition"] = (record["edition"] or "").strip() or paper.get("edition")
             if record.get("title"):
                 paper["title"] = record["title"]
+
+    @staticmethod
+    def _apply_ai_type(paper: dict, ai_candidate: Optional[dict]) -> None:
+        """Merges AI-detected paper type / edition / ISBN / ISSN into the paper
+        even when other metadata comes from Crossref (which lacks these fields)."""
+        if not ai_candidate:
+            return
+        for key in ("paper_type", "edition", "issn", "isbn"):
+            value = ai_candidate.get(key)
+            if value and not paper.get(key):
+                paper[key] = value
 
     @staticmethod
     def _pick_best(query_title: str, candidates: List[dict]) -> Tuple[Optional[dict], float]:
@@ -913,7 +967,8 @@ class LiteratureService:
                SET title = ?, year = ?, doi = ?, abstract = ?, authors = ?,
                    journal = ?, volume = ?, issue = ?, pages = ?, publisher = ?,
                    url = ?, verification_status = ?, apa_reference = ?,
-                   extracted_doi = ?, metadata_candidates = ?
+                   extracted_doi = ?, metadata_candidates = ?,
+                   paper_type = ?, edition = ?, issn = ?, isbn = ?
                WHERE id = ?""",
             (
                 paper.get("title"),
@@ -931,6 +986,10 @@ class LiteratureService:
                 self.apa_reference(paper),
                 paper.get("extracted_doi"),
                 json.dumps(paper.get("metadata_candidates") or []),
+                paper.get("paper_type"),
+                paper.get("edition"),
+                paper.get("issn"),
+                paper.get("isbn"),
                 paper["id"],
             ),
         )
@@ -947,16 +1006,39 @@ class LiteratureService:
         authors = paper.get("authors") or []
         year = paper.get("year") or "n.d."
         title = (paper.get("title") or "Untitled").strip()
+        paper_type = (paper.get("paper_type") or "").strip()
+        edition = (paper.get("edition") or "").strip()
+        isbn = (paper.get("isbn") or "").strip()
+
         if authors:
             shown = "; ".join(authors[:7])
             if len(authors) > 7:
                 shown += " …"
-            ref = f"{shown} ({year}). {title}."
+            ref = f"{shown} ({year}). {title}"
         else:
-            ref = f"{title} ({year})."
+            ref = f"{title} ({year})"
+
+        if paper_type == "textbook" and edition:
+            ref += f" ({edition} ed.)."
+        else:
+            ref += "."
 
         journal = (paper.get("journal") or "").strip()
-        if journal:
+        if paper_type == "textbook":
+            pass
+        elif paper_type == "newspaper" and journal:
+            pages = (paper.get("pages") or "").strip()
+            ref += f" {journal}"
+            if pages:
+                ref += f", {pages}"
+            ref += "."
+        elif paper_type == "preprint":
+            ref += " Preprint."
+        elif paper_type == "thesis":
+            publisher = (paper.get("publisher") or "").strip()
+            if publisher:
+                ref += f" {publisher}."
+        elif journal:
             ref += f" {journal}"
             volume = (paper.get("volume") or "").strip()
             issue = (paper.get("issue") or "").strip()
@@ -964,22 +1046,27 @@ class LiteratureService:
                 ref += f", {volume}" + (f"({issue})" if issue else "")
             elif issue:
                 ref += f" ({issue})"
-        pages = (paper.get("pages") or "").strip()
-        if pages:
-            ref += f", {pages}"
-        if journal or pages:
+            pages = (paper.get("pages") or "").strip()
+            if pages:
+                ref += f", {pages}"
             ref += "."
+        else:
+            pages = (paper.get("pages") or "").strip()
+            if pages:
+                ref += f" {pages}."
+            publisher = (paper.get("publisher") or "").strip()
+            if publisher:
+                ref += f" {publisher}."
 
-        publisher = (paper.get("publisher") or "").strip()
-        if publisher and not journal:
-            ref += f" {publisher}."
-
-        doi = (paper.get("doi") or "").strip().rstrip(".,")
-        url = (paper.get("url") or "").strip().rstrip(".,")
-        if doi:
-            ref += f" https://doi.org/{doi}"
-        elif url:
-            ref += f" {url}"
+        if paper_type == "textbook" and isbn:
+            ref += f" ISBN {isbn}"
+        else:
+            doi = (paper.get("doi") or "").strip().rstrip(".,")
+            url = (paper.get("url") or "").strip().rstrip(".,")
+            if doi:
+                ref += f" https://doi.org/{doi}"
+            elif url:
+                ref += f" {url}"
         return ref
 
     # --- similarity edges ----------------------------------------------------
@@ -1271,6 +1358,7 @@ class LiteratureService:
                     "abstract": p.get("abstract"),
                     "verification_status": p.get("verification_status"),
                     "apa_reference": p.get("apa_reference"),
+                    "paper_type": p.get("paper_type"),
                 },
             }
             for p in papers
