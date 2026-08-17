@@ -171,6 +171,7 @@ class SkillsService:
         return {"success": True}
 
     def active_instructions(self, user_id: str) -> str:
+        """Return ALL enabled skill instructions (used as fallback)."""
         self._ensure_installed(user_id)
         rows = self.db.execute(
             "SELECT manifest FROM user_skills WHERE user_id = ? AND enabled = 1",
@@ -180,4 +181,82 @@ class SkillsService:
         for r in rows:
             m = json.loads(r["manifest"])
             sections.append(f"## {m['name']}\n{m['instructions']}")
+        return "\n\n".join(sections)
+
+    # --- skill auto-detection ------------------------------------------------
+
+    _KEYWORD_MAP: dict[str, list[str]] = {
+        "summarize": [
+            "summarize", "summary", "summarise", "tldr", "tl;dr", "brief overview",
+            "overview of", "what does this paper say", "main points", "key points",
+            "digest", "recap",
+        ],
+        "source-evaluation": [
+            "evaluate", "critique", "critical review", "critical analysis",
+            "assess the quality", "reliability", "strengths and weaknesses",
+            "how credible", "bias", "methodology quality", "rigor", "rigour",
+            "trustworthiness", "validity",
+        ],
+        "literature-review": [
+            "literature review", "review of the literature", "survey of",
+            "state of the art", "state of the art review", "systematic review",
+            "thematic synthesis", "what does the literature say",
+            "what do the papers say", "body of literature", "existing research",
+            "previous studies", "prior work",
+        ],
+        "research-workflow": [
+            "research question", "research plan", "how should i approach",
+            "what should i investigate", "research design", "methodology",
+            "research strategy", "study design", "investigate",
+            "further research", "next steps", "gap in the literature",
+            "research gap",
+        ],
+        "hypothesis-brainstorm": [
+            "hypothesis", "hypothesize", "brainstorm", "generate ideas",
+            "what if", "could it be", "possible explanations", "theorize",
+            "speculate", "creative directions", "novel ideas",
+        ],
+        "citation-formatter": [
+            "cite", "citation", "reference", "format reference", "apa format",
+            "apa style", "references list", "bibliography", "how to cite",
+            "in-text citation", "parenthetical citation",
+        ],
+        "literature-mapping": [
+            "literature map", "literature mapping", "mapping entry",
+            "map this paper", "map the literature", "research objective",
+            "methodology and sample", "key findings", "limitations and gaps",
+            "relevance and contribution", "review table",
+        ],
+    }
+
+    def detect_relevant_skills(self, user_id: str, message: str) -> str:
+        """Analyze the user's message and return instructions only for
+        skills that are relevant to the current request.  Falls back to
+        returning all enabled instructions if no specific skill is detected
+        (so general questions still get full context)."""
+        self._ensure_installed(user_id)
+        msg_lower = message.lower()
+
+        # Find which skill IDs match the message
+        matched_ids: set[str] = set()
+        for skill_id, keywords in self._KEYWORD_MAP.items():
+            for kw in keywords:
+                if kw in msg_lower:
+                    matched_ids.add(skill_id)
+                    break
+
+        # If nothing matched, return all (general question — full context helps)
+        if not matched_ids:
+            return self.active_instructions(user_id)
+
+        # Otherwise return only matched skills
+        rows = self.db.execute(
+            "SELECT skill_id, manifest FROM user_skills WHERE user_id = ? AND enabled = 1",
+            (user_id,),
+        ).fetchall()
+        sections = []
+        for r in rows:
+            if r["skill_id"] in matched_ids:
+                m = json.loads(r["manifest"])
+                sections.append(f"## {m['name']}\n{m['instructions']}")
         return "\n\n".join(sections)

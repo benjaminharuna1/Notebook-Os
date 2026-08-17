@@ -154,6 +154,66 @@ class DocumentService:
         self._rebuild_literature(user_id, project_id)
         return {"success": True, "deleted": len(owned)}
 
+    # --- orphan cleanup -------------------------------------------------------
+
+    def find_orphans(self, user_id: str, project_id: str) -> list[dict]:
+        """Find documents that are indexed but have no literature entry,
+        or whose vectors exist without a corresponding documents row."""
+        orphans = []
+
+        # 1. Indexed docs with no literature entry (stale/incomplete pipeline)
+        rows = self.repo.db.execute(
+            """SELECT d.id, d.title, d.status, d.file_size
+               FROM documents d
+               LEFT JOIN literature_entries e ON e.paper_id = d.id
+               WHERE d.user_id = ? AND d.project_id = ? AND d.status = 'indexed'
+                 AND e.paper_id IS NULL""",
+            (user_id, project_id),
+        ).fetchall()
+        for r in rows:
+            orphans.append({
+                "id": r["id"],
+                "title": r["title"],
+                "reason": "indexed_without_entry",
+                "file_size": r["file_size"],
+            })
+
+        # 2. Failed docs that are just wasting space
+        rows2 = self.repo.db.execute(
+            """SELECT id, title, status, file_size
+               FROM documents
+               WHERE user_id = ? AND project_id = ? AND status = 'failed'""",
+            (user_id, project_id),
+        ).fetchall()
+        for r in rows2:
+            orphans.append({
+                "id": r["id"],
+                "title": r["title"],
+                "reason": "failed_permanently",
+                "file_size": r["file_size"],
+            })
+
+        return orphans
+
+    def clean_orphans(self, user_id: str, project_id: str) -> dict:
+        """Delete orphaned documents: indexed without entries, or permanently failed."""
+        orphans = self.find_orphans(user_id, project_id)
+        if not orphans:
+            return {"success": True, "deleted": 0, "reasons": {}}
+
+        ids = [o["id"] for o in orphans]
+        reasons = {}
+        for o in orphans:
+            reasons.setdefault(o["reason"], 0)
+            reasons[o["reason"]] += 1
+
+        result = self.delete_documents(ids, user_id, project_id)
+        return {
+            "success": True,
+            "deleted": result["deleted"],
+            "reasons": reasons,
+        }
+
     @staticmethod
     def _prune_checkpoints(user_id: str, project_id: str, paper_ids: list[str]) -> None:
         """Remove deleted papers from stored literature checkpoints so old

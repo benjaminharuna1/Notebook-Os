@@ -54,36 +54,69 @@ class ChatService:
 
     # --- literature entries context ------------------------------------------
 
-    def _lit_entries_context(self, project_id: str | None, doc_ids: list | None) -> str:
-        """Build context from literature entries for documents matched by search."""
+    def _lit_entries_context(self, project_id: str | None, doc_ids: list | None, source_doc_ids: list | None = None) -> str:
+        """Build context from literature entries for documents matched by search.
+
+        Combines user-selected doc_ids (from paper scope) and source_doc_ids
+        (from the actual search results) to provide rich per-paper metadata.
+        """
         if not project_id:
             return ""
         try:
-            rows = self.db.execute(
-                """SELECT e.paper_id, e.research_objective, e.methodology,
-                          e.key_findings, e.limitations, e.relevance, e.citation,
-                          d.title AS title
-                   FROM literature_entries e
-                   JOIN documents d ON d.id = e.paper_id
-                   WHERE e.project_id = ? AND e.user_id IS NOT NULL""",
-                (project_id,),
-            ).fetchall()
+            # Union of user-selected and search-matched document IDs
+            target_ids = set(doc_ids or [])
+            target_ids.update(source_doc_ids or [])
+            if not target_ids:
+                # No specific docs targeted — use all project entries (up to a limit)
+                rows = self.db.execute(
+                    """SELECT e.paper_id, e.research_objective, e.methodology,
+                              e.key_findings, e.limitations, e.relevance, e.citation,
+                              d.title AS title, d.author AS author, d.extracted_doi AS doi
+                       FROM literature_entries e
+                       JOIN documents d ON d.id = e.paper_id
+                       WHERE e.project_id = ? AND e.user_id IS NOT NULL""",
+                    (project_id,),
+                ).fetchall()
+            else:
+                placeholders = ",".join("?" for _ in target_ids)
+                rows = self.db.execute(
+                    f"""SELECT e.paper_id, e.research_objective, e.methodology,
+                               e.key_findings, e.limitations, e.relevance, e.citation,
+                               d.title AS title, d.author AS author, d.extracted_doi AS doi
+                        FROM literature_entries e
+                        JOIN documents d ON d.id = e.paper_id
+                        WHERE e.project_id = ? AND e.user_id IS NOT NULL
+                          AND e.paper_id IN ({placeholders})""",
+                    (project_id, *target_ids),
+                ).fetchall()
             if not rows:
                 return ""
             parts = []
             for r in rows:
                 title = r["title"] or ""
+                citation = r["citation"] or ""
                 obj = r["research_objective"] or ""
+                methodology = r["methodology"] or ""
                 findings = r["key_findings"] or ""
-                if not obj and not findings:
+                limitations = r["limitations"] or ""
+                relevance = r["relevance"] or ""
+                if not obj and not findings and not methodology:
                     continue
                 block = f"**{title}**"
+                if citation:
+                    block += f"\n  Citation: {citation}"
                 if obj:
                     block += f"\n  Research objective: {obj}"
+                if methodology:
+                    block += f"\n  Methodology: {methodology}"
                 if findings:
                     block += f"\n  Key findings: {findings}"
+                if limitations:
+                    block += f"\n  Limitations: {limitations}"
+                if relevance:
+                    block += f"\n  Relevance: {relevance}"
                 parts.append(block)
-            return "\n\n".join(parts[:20])
+            return "\n\n".join(parts[:30])
         except Exception:
             return ""
 
@@ -165,17 +198,30 @@ class ChatService:
 
         search_req = SearchRequest(
             query=effective_message,
-            top_k=req.top_k if hasattr(req, "top_k") else 5,
+            top_k=req.top_k if hasattr(req, "top_k") else 10,
             document_ids=req.document_ids,
             project_id=project_id,
         )
         search_results = await self.search_service.search(search_req, user_id)
-        sources = search_results.results
+
+        # Fix 5: Filter low-quality results (score < 0.3) but keep at least top 3
+        raw_sources = search_results.results
+        if len(raw_sources) > 3:
+            good = [s for s in raw_sources if getattr(s, "score", 0) >= 0.3]
+            sources = good if len(good) >= 3 else raw_sources[:3]
+        else:
+            sources = raw_sources
 
         model = self.model_service.get_active_model(user_id)
-        skill_instructions = SkillsService(self.db).active_instructions(user_id)
+        skills_svc = SkillsService(self.db)
+        skill_instructions = skills_svc.detect_relevant_skills(user_id, effective_message)
         cluster_ctx = self._cluster_context(project_id)
-        lit_ctx = self._lit_entries_context(project_id, req.document_ids)
+
+        # Fix 6: Union user-selected doc_ids with search-matched doc_ids
+        search_doc_ids = {getattr(s, "document_id", None) for s in sources if getattr(s, "document_id", None)}
+        user_doc_ids = set(req.document_ids or [])
+        source_doc_ids = list(user_doc_ids | search_doc_ids)
+        lit_ctx = self._lit_entries_context(project_id, req.document_ids, source_doc_ids)
         context = self.prompt_builder.build(
             sources, effective_message, skill_instructions,
             cluster_context=cluster_ctx,
@@ -183,7 +229,8 @@ class ChatService:
             slash_extra=slash_extra,
         )
 
-        messages = self.repo.get_messages(session_id)
+        # Fix 4: Cap conversation history to last 20 messages
+        messages = self.repo.get_messages(session_id, limit=20)
         source_data = [
             {"chunk_id": s.chunk_id, "title": s.document_title, "page": s.page_number, "document_id": getattr(s, "document_id", None)}
             for s in sources
@@ -231,7 +278,7 @@ class ChatService:
 
     def get_session(self, session_id: str, user_id: str):
         session = self.repo.get_session(session_id, user_id)
-        messages = self.repo.get_messages(session_id)
+        messages = self.repo.get_messages(session_id, limit=50)
         return {"session": session, "messages": messages}
 
     def delete_session(self, session_id: str, user_id: str):

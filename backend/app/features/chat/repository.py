@@ -35,13 +35,21 @@ class ChatRepository:
         )
         return cursor.fetchone()
 
-    def get_messages(self, session_id: str):
+    def get_messages(self, session_id: str, limit: int | None = None):
         cursor = self.db.cursor()
-        cursor.execute(
-            "SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at",
-            (session_id,),
-        )
-        return [dict(r) for r in cursor.fetchall()]
+        if limit:
+            cursor.execute(
+                "SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at DESC LIMIT ?",
+                (session_id, limit),
+            )
+            rows = list(reversed(cursor.fetchall()))
+        else:
+            cursor.execute(
+                "SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at",
+                (session_id,),
+            )
+            rows = cursor.fetchall()
+        return [dict(r) for r in rows]
 
     def add_message(self, session_id: str, role: str, content: str, sources=None, model_used=None):
         cursor = self.db.cursor()

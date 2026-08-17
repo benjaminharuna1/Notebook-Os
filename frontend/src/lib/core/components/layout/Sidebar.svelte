@@ -27,9 +27,9 @@
   const projectLinks = $derived.by(() => {
     if (!projectId) return [];
     return [
-      { href: `/projects/${projectId}/library`, label: 'Library', icon: '📚' },
-      { href: `/projects/${projectId}/search`, label: 'Search', icon: '🔍' },
       { href: `/projects/${projectId}/chat`, label: 'Chat', icon: '💬' },
+      { href: `/projects/${projectId}/literature`, label: 'Literature', icon: '📝' },
+      { href: `/projects/${projectId}/library`, label: 'Library', icon: '📚' },
       { href: `/projects/${projectId}/graph`, label: 'Graph', icon: '🕸️' },
     ];
   });

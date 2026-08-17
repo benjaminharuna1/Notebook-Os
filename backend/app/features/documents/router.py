@@ -77,3 +77,23 @@ async def get_document_file(
     service = DocumentService(db)
     path, media_type = service.get_document_file(document_id, current_user["id"], project_id)
     return FileResponse(path=path, media_type=media_type)
+
+
+@router.get("/projects/{project_id}/documents/orphans")
+async def find_orphaned_documents(
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    service = DocumentService(db)
+    return {"orphans": service.find_orphans(current_user["id"], project_id)}
+
+
+@router.post("/projects/{project_id}/documents/clean-orphans")
+async def clean_orphaned_documents(
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    service = DocumentService(db)
+    return service.clean_orphans(current_user["id"], project_id)

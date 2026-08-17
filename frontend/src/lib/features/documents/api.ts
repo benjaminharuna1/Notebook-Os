@@ -34,3 +34,23 @@ export async function deleteDocuments(
     { document_ids: ids },
   );
 }
+
+export interface OrphanInfo {
+  id: string;
+  title: string;
+  reason: 'indexed_without_entry' | 'failed_permanently';
+  file_size: number;
+}
+
+export async function findOrphans(projectId: string): Promise<{ orphans: OrphanInfo[] }> {
+  return api.get<{ orphans: OrphanInfo[] }>(`/projects/${projectId}/documents/orphans`);
+}
+
+export async function cleanOrphans(
+  projectId: string,
+): Promise<{ success: boolean; deleted: number; reasons: Record<string, number> }> {
+  return api.post<{ success: boolean; deleted: number; reasons: Record<string, number> }>(
+    `/projects/${projectId}/documents/clean-orphans`,
+    {},
+  );
+}

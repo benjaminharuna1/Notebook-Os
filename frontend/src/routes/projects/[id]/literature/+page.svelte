@@ -4,7 +4,6 @@
   import KnowledgeGraph from '$lib/features/graph/components/KnowledgeGraph.svelte';
   import { clusterColor } from '$lib/features/graph/clusterColor';
   import type { LiteratureEntry, LiteratureMapResponse } from '$lib/features/graph/types';
-  import type { SearchResult } from '$lib/features/search/types';
   import {
     applyPaperCandidate,
     exportLiteratureMap,
@@ -13,7 +12,6 @@
     getLiteratureStatus,
     getPaperMetadata,
     regenerateLiteratureEntry,
-    searchPapers,
     startLiteratureBuild,
     updateLiteratureEntry,
     updatePaperMetadata,
@@ -46,11 +44,6 @@
   let edgeType = $state<'all' | 'citation' | 'similarity'>('all');
   let clusterFilter = $state<string | null>(null);
 
-  let searchQ = $state('');
-  let searchResults = $state<SearchResult[]>([]);
-  let searching = $state(false);
-  let searchOpen = $state(false);
-  let searchError = $state('');
   let focusNodeId = $state('');
   let systemWarnings = $state<string[]>([]);
 
@@ -115,8 +108,6 @@
     clusterFilter = null;
     sortCol = 'title';
     sortDir = 'asc';
-    searchResults = [];
-    searchOpen = false;
     focusNodeId = '';
     systemWarnings = [];
     loadMap();
@@ -254,29 +245,6 @@
     } finally {
       exporting = false;
     }
-  }
-
-  async function runSearch() {
-    const q = searchQ.trim();
-    if (!q || !projectId) return;
-    searching = true;
-    searchError = '';
-    searchOpen = true;
-    try {
-      const response = await searchPapers(projectId, q);
-      searchResults = response.results ?? [];
-    } catch (e) {
-      searchError = e instanceof Error ? e.message : String(e ?? 'Search failed');
-      searchResults = [];
-    } finally {
-      searching = false;
-    }
-  }
-
-  function pickResult(result: SearchResult) {
-    focusNodeId = result.document_id;
-    view = 'map';
-    searchOpen = false;
   }
 
   function replaceEntry(updated: LiteratureEntry) {
@@ -579,71 +547,6 @@
       </div>
 
       {#if view === 'map'}
-        <div class="relative min-w-64 flex-1 max-w-md">
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Search all papers
-          </label>
-          <div class="flex gap-2">
-            <input
-              bind:value={searchQ}
-              placeholder="Keywords or a statement across all papers…"
-              onkeydown={(e) => {
-                if (e.key === 'Enter') runSearch();
-              }}
-              class="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
-            />
-            <button
-              onclick={runSearch}
-              disabled={searching}
-              class="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {searching ? '…' : 'Search'}
-            </button>
-          </div>
-          {#if searchOpen && !searching}
-            <div class="absolute left-0 right-0 top-full z-30 mt-1 max-h-72 overflow-auto rounded-lg border border-slate-200 bg-white shadow-xl">
-              {#if searchError}
-                <p class="p-3 text-xs text-red-600">{searchError}</p>
-              {:else if searchResults.length === 0}
-                <p class="p-3 text-xs text-slate-400">No matches.</p>
-              {:else}
-                <ul class="divide-y divide-slate-100">
-                  {#each searchResults as result (result.chunk_id)}
-                    <li>
-                      <button
-                        onclick={() => pickResult(result)}
-                        class="block w-full px-3 py-2 text-left hover:bg-slate-50"
-                      >
-                        <p class="truncate text-xs font-medium text-slate-800">
-                          {result.document_title}
-                        </p>
-                        <p class="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-500">
-                          {result.content}
-                        </p>
-                        <p class="mt-0.5 text-[10px] text-slate-400">
-                          <span class="inline-flex items-center gap-1">
-                            <span
-                              class="rounded px-1 py-px font-medium {result.source === 'keyword'
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-sky-100 text-sky-700'}"
-                            >
-                              {result.source === 'keyword' ? 'keyword' : 'semantic'}
-                            </span>
-                            score {result.score.toFixed(2)}
-                            {#if result.page_number}
-                              · page {result.page_number}
-                            {/if}
-                          </span>
-                        </p>
-                      </button>
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
-            </div>
-          {/if}
-        </div>
-
         <div>
           <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
             {clusterFilter ? 'Cluster filter' : 'Clusters'}

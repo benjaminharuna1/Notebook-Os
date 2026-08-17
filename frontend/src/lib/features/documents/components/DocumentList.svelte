@@ -1,6 +1,6 @@
 <script lang="ts">
   import StatusBadge from '$lib/core/components/StatusBadge.svelte';
-  import { listDocuments, deleteDocuments } from '../api';
+  import { listDocuments, deleteDocuments, findOrphans, cleanOrphans } from '../api';
   import { pauseIngestion, resumeIngestion, reprocessIngestion, reprocessDocuments } from '$lib/features/ingestion/api';
   import {
     exportReferencesDocx,
@@ -16,7 +16,10 @@
     type LiteratureEntry,
   } from '$lib/features/literature/api';
   import type { LiteratureMetadata, MetadataCandidate } from '$lib/features/literature/api';
+  import { searchPapers } from '$lib/features/literature/api';
+  import type { SearchResult } from '$lib/features/search/types';
   import type { Document } from '../types';
+  import { goto } from '$app/navigation';
 
   let { projectId }: { projectId?: string } = $props();
 
@@ -34,6 +37,13 @@
   let buildJob = $state<LiteratureBuildJob | null>(null);
   let buildToken = $state(0);
   let systemWarnings = $state<string[]>([]);
+  let cleaningOrphans = $state(false);
+
+  let searchQ = $state('');
+  let searchResults = $state<SearchResult[]>([]);
+  let searching = $state(false);
+  let searchOpen = $state(false);
+  let searchError = $state('');
 
   let viewPaper = $state<Document | null>(null);
   let viewEntry = $state<LiteratureEntry | null>(null);
@@ -373,6 +383,57 @@
     }
   }
 
+  async function handleCleanOrphans() {
+    if (!projectId) return;
+    try {
+      const orphans = await findOrphans(projectId);
+      if (orphans.orphans.length === 0) {
+        actionInfo = 'No orphaned indexes found — all documents are clean.';
+        return;
+      }
+      const count = orphans.orphans.length;
+      const reasons = orphans.orphans.reduce(
+        (acc, o) => { acc[o.reason] = (acc[o.reason] || 0) + 1; return acc; },
+        {} as Record<string, number>,
+      );
+      const reasonText = Object.entries(reasons)
+        .map(([k, v]) => `${v} ${k === 'indexed_without_entry' ? 'missing entries' : 'failed'}`)
+        .join(', ');
+      if (!confirm(`Found ${count} orphaned document(s) (${reasonText}). Delete them?`)) return;
+      cleaningOrphans = true;
+      clearActionFeedback();
+      const result = await cleanOrphans(projectId);
+      actionInfo = `Cleaned ${result.deleted} orphaned document(s).`;
+      await loadDocs();
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : String(e ?? 'Cleanup failed');
+    } finally {
+      cleaningOrphans = false;
+    }
+  }
+
+  async function runSearch() {
+    const q = searchQ.trim();
+    if (!q || !projectId) return;
+    searching = true;
+    searchError = '';
+    searchOpen = true;
+    try {
+      const response = await searchPapers(projectId, q);
+      searchResults = response.results ?? [];
+    } catch (e) {
+      searchError = e instanceof Error ? e.message : String(e ?? 'Search failed');
+      searchResults = [];
+    } finally {
+      searching = false;
+    }
+  }
+
+  function pickSearchResult(result: SearchResult) {
+    searchOpen = false;
+    goto(`/projects/${projectId}/library/${result.document_id}`);
+  }
+
   async function openView(doc: Document) {
     if (!projectId) return;
     viewPaper = doc;
@@ -444,15 +505,92 @@
 </script>
 
 <div class="space-y-4">
+  <div class="relative">
+    <div class="flex gap-2">
+      <input
+        bind:value={searchQ}
+        placeholder="Search papers by keyword or phrase…"
+        onkeydown={(e) => { if (e.key === 'Enter') runSearch(); }}
+        class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500"
+      />
+      <button
+        onclick={runSearch}
+        disabled={searching}
+        class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+      >
+        {searching ? '…' : 'Search'}
+      </button>
+      {#if searchOpen}
+        <button
+          onclick={() => { searchOpen = false; searchResults = []; searchQ = ''; }}
+          class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+        >
+          Clear
+        </button>
+      {/if}
+    </div>
+    {#if searchOpen && !searching}
+      <div class="absolute left-0 right-0 top-full z-30 mt-1 max-h-80 overflow-auto rounded-lg border border-slate-200 bg-white shadow-xl">
+        {#if searchError}
+          <p class="p-3 text-xs text-red-600">{searchError}</p>
+        {:else if searchResults.length === 0}
+          <p class="p-3 text-xs text-slate-400">No matches found.</p>
+        {:else}
+          <ul class="divide-y divide-slate-100">
+            {#each searchResults as result (result.chunk_id)}
+              <li>
+                <button
+                  onclick={() => pickSearchResult(result)}
+                  class="block w-full px-3 py-2 text-left hover:bg-slate-50"
+                >
+                  <p class="truncate text-xs font-medium text-slate-800">
+                    {result.document_title}
+                  </p>
+                  <p class="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-500">
+                    {result.content}
+                  </p>
+                  <p class="mt-0.5 text-[10px] text-slate-400">
+                    <span class="inline-flex items-center gap-1">
+                      <span
+                        class="rounded px-1 py-px font-medium {result.source === 'keyword'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-sky-100 text-sky-700'}"
+                      >
+                        {result.source === 'keyword' ? 'keyword' : 'semantic'}
+                      </span>
+                      score {result.score.toFixed(2)}
+                      {#if result.page_number}
+                        · page {result.page_number}
+                      {/if}
+                    </span>
+                  </p>
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    {/if}
+  </div>
+
   <div class="flex flex-wrap items-center justify-between gap-3">
     <h2 class="text-sm font-semibold text-slate-700">Papers ({total})</h2>
-    <button
-      onclick={handleExportReferences}
-      disabled={exporting}
-      class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
-    >
-      {exporting ? 'Exporting…' : '⬇ Export APA references (.docx)'}
-    </button>
+    <div class="flex items-center gap-2">
+      <button
+        onclick={handleCleanOrphans}
+        disabled={cleaningOrphans}
+        class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+      >
+        {cleaningOrphans ? 'Cleaning…' : '🧹 Clean Orphaned Indexes'}
+      </button>
+      <button
+        onclick={handleExportReferences}
+        disabled={exporting}
+        class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+      >
+        {exporting ? 'Exporting…' : '⬇ Export APA references (.docx)'}
+      </button>
+    </div>
   </div>
 
   {#if actionError}

@@ -13,10 +13,9 @@
   const projectId = $derived($page.params.id);
   const active = $derived.by(() => {
     const p = $page.url.pathname;
-    if (p.includes('/search')) return 'search';
     if (p.includes('/chat')) return 'chat';
-    if (p.includes('/graph')) return 'graph';
     if (p.includes('/literature')) return 'literature';
+    if (p.includes('/graph')) return 'graph';
     return 'library';
   });
 
@@ -41,22 +40,6 @@
       {/if}
       <nav class="mt-2 flex gap-5 text-sm">
         <a
-          href="/projects/{projectId}/library"
-          class="pb-1 {active === 'library'
-            ? 'border-b-2 border-indigo-600 font-medium text-indigo-600'
-            : 'text-slate-500 hover:text-slate-800'}"
-        >
-          Library
-        </a>
-        <a
-          href="/projects/{projectId}/search"
-          class="pb-1 {active === 'search'
-            ? 'border-b-2 border-indigo-600 font-medium text-indigo-600'
-            : 'text-slate-500 hover:text-slate-800'}"
-        >
-          Search
-        </a>
-        <a
           href="/projects/{projectId}/chat"
           class="pb-1 {active === 'chat'
             ? 'border-b-2 border-indigo-600 font-medium text-indigo-600'
@@ -65,20 +48,28 @@
           Chat
         </a>
         <a
-          href="/projects/{projectId}/graph"
-          class="pb-1 {active === 'graph'
-            ? 'border-b-2 border-indigo-600 font-medium text-indigo-600'
-            : 'text-slate-500 hover:text-slate-800'}"
-        >
-          Graph
-        </a>
-        <a
           href="/projects/{projectId}/literature"
           class="pb-1 {active === 'literature'
             ? 'border-b-2 border-indigo-600 font-medium text-indigo-600'
             : 'text-slate-500 hover:text-slate-800'}"
         >
           Literature
+        </a>
+        <a
+          href="/projects/{projectId}/library"
+          class="pb-1 {active === 'library'
+            ? 'border-b-2 border-indigo-600 font-medium text-indigo-600'
+            : 'text-slate-500 hover:text-slate-800'}"
+        >
+          Library
+        </a>
+        <a
+          href="/projects/{projectId}/graph"
+          class="pb-1 {active === 'graph'
+            ? 'border-b-2 border-indigo-600 font-medium text-indigo-600'
+            : 'text-slate-500 hover:text-slate-800'}"
+        >
+          Graph
         </a>
       </nav>
     </div>

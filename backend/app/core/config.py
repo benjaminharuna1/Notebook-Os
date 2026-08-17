@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     DEFAULT_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     DEFAULT_EMBEDDING_PROVIDER: str = "fastembed"
     DEFAULT_PROVIDER: str = "ollama"
-    DEFAULT_TEMPERATURE: float = 0.7
+    DEFAULT_TEMPERATURE: float = 0.3
     DEFAULT_MAX_TOKENS: int = 2048
 
     # Cloud model support. Users opt in per-account in Settings; set this to
