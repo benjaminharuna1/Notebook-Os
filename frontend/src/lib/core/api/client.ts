@@ -88,7 +88,7 @@ export function createSSEConnection(
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = JSON.parse(line.slice(6));
-            if (data.type === 'chunk') onChunk(data.content);
+            if (data.type === 'chunk' && data.content != null) onChunk(data.content);
             else if (data.type === 'sources') {
               onSources?.(data.sources);
             } else if (data.type === 'error') {
@@ -107,7 +107,7 @@ export function createSSEConnection(
         for (const line of buffer.split('\n')) {
           if (line.startsWith('data: ')) {
             const data = JSON.parse(line.slice(6));
-            if (data.type === 'chunk') onChunk(data.content);
+            if (data.type === 'chunk' && data.content != null) onChunk(data.content);
             else if (data.type === 'sources') {
               onSources?.(data.sources);
             } else if (data.type === 'error') {

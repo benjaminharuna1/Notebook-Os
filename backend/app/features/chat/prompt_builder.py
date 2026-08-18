@@ -30,6 +30,7 @@ class PromptBuilder:
         lit_entries_context: str = "",
         slash_extra: str = "",
         apa_references: str = "",
+        web_results: str = "",
     ) -> str:
         # --- format source chunks ---
         raw_source_parts = []
@@ -38,8 +39,8 @@ class PromptBuilder:
                 f"[Indexed Paper: {s.document_title}, Page {s.page_number}]\n{s.content}"
             )
 
-        # Budget: 6000 tokens for search-result chunks (most important context)
-        source_parts = self._truncate_to_budget(raw_source_parts, 6000)
+        # Budget: 10000 tokens for search-result chunks (most important context)
+        source_parts = self._truncate_to_budget(raw_source_parts, 10000)
         context = "\n\n".join(source_parts)
 
         has_sources = len(source_parts) > 0
@@ -58,10 +59,13 @@ CRITICAL — ANTI-HALLUCINATION RULES (HIGHEST PRIORITY):
 
 CORE RULES:
 1. ALWAYS base your answer on the indexed journal content provided in the context below. These are the user's own papers — they are your primary knowledge source.
-2. When search results and literature entries are provided, those are excerpts from the user's indexed journals. Treat them as authoritative and grounded evidence.
-3. If the context contains relevant indexed content, use it exclusively. Do not draw on outside general knowledge unless the user explicitly asks for it.
-4. When multiple indexed papers are relevant, synthesize across them — highlight areas of agreement, disagreement, and gaps.
-5. If the indexed content does NOT contain enough information to answer the question fully, say so clearly. Never guess.
+2. The context below contains MULTIPLE chunks from the user's indexed journals. Read EVERY chunk carefully — answers often span across several chunks or papers. Synthesize information from all relevant chunks.
+3. Each chunk is labeled with its source paper title and page number. Use these labels to cite your sources accurately.
+4. If a chunk contains a reference list or bibliography, check it for related works — those references may contain relevant information too.
+5. When multiple indexed papers are relevant, synthesize across them — highlight areas of agreement, disagreement, and gaps.
+6. If the context contains relevant indexed content, use it exclusively. Do not draw on outside general knowledge unless the user explicitly asks for it.
+7. If the indexed content does NOT contain enough information to answer the question fully, say so clearly. Never guess.
+8. IMPORTANT: Do not ignore chunks just because they seem tangential at first glance. Read them fully — a seemingly unrelated chunk may contain a key finding, a cited reference, or a methodology detail that answers the question.
 
 TONE & STYLE:
 - Answer directly. Do NOT start with phrases like "According to the indexed journals..." or "The paper states..." or "Based on the provided context..."
@@ -83,9 +87,34 @@ No author: use title — ("Climate Report", 2023).
 No date: (Author, n.d.).
 Group author first mention: (World Health Organization [WHO], 2025) then (WHO, 2025).
 Group author no abbreviation: (World Health Organization, 2025) every time.
-Secondary source: (Smith, 2020, as cited in Jones, 2022).
+
+SECONDARY SOURCES (critical rule):
+When an indexed journal (the SOURCE you are reading) itself references another work that is NOT directly indexed, use the "as cited in" format:
+  In-text: (OriginalAuthor, Year, as cited in SourceAuthor, Year)
+  Narrative: OriginalAuthor (Year, as cited in SourceAuthor, Year) found that...
+Rules:
+- The SOURCE author (the indexed journal) is always the LAST name in the citation and is the one that appears in the References list.
+- The ORIGINAL author (the work cited within the indexed journal) is NOT added to the References list — only the indexed source appears there.
+- Only use "as cited in" when the information genuinely comes from a reference chain (one paper citing another). If the indexed paper itself contains the finding directly, cite the indexed paper normally.
+- If you are unsure whether a finding comes directly from the indexed paper or from a cited reference within it, cite the indexed paper directly (the safer default).
+
+HANDLING USER QUESTIONS ABOUT CITED REFERENCES:
+When the user asks about a specific reference (e.g., "where is Padilla-Fernandez & Nuthall, 2001?" or "what is the APA for Smith 2019?"):
+1. The user knows their own library — ASSUME this reference is cited within one of the indexed papers. Your job is to find WHERE.
+2. Search EVERY context chunk for: author surname(s), year, DOIs, titles, volume numbers, page ranges, or any partial match. Check:
+   - Reference/bibliography lists at the end of chunks
+   - Inline text discussing the work
+   - Footnotes, endnotes, table captions
+   - Even partial mentions like "Padilla-Fernandez (2001) found that..."
+3. If you find the full reference in any chunk, provide it with the APA format and state which indexed journal cited it.
+4. If you find partial details (author names + year + maybe title fragment), provide what you found and note what is missing.
+5. If web search results are provided below (marked "IMPORTANT: The reference was NOT found in the indexed journals"), use them to provide the APA reference. Explain: "This reference was not found in your indexed journals, but here is the APA reference from an online search: [reference]. You can download and index this paper to have it available locally."
+6. If you genuinely cannot find ANY mention in the indexed context AND no web results are provided, say: "I searched both the indexed journals and online sources but could not find a complete reference for [Author, Year]. You may want to search for this paper manually and index it."
+7. NEVER say "there is no result", "I did not find any mention", or "this paper is external" without searching EVERY chunk exhaustively AND checking web results. The user is telling you this reference exists — believe them and look harder.
+8. If the context contains a paper that cites this work, the paper itself is the source: "[Author, Year] is cited within [Indexed Paper Title]. The reference details from that paper are: [extracted details]."
 
 REFERENCE LIST FORMAT — when listing references at the end:
+Only include the PRIMARY (indexed) sources in the References list — never include secondary/cited works.
 Journal Article: Author, A. A., Author, B. B., & Author, C. C. (Year). Title of article. Title of Periodical, volume(issue), page–page. https://doi.org/xxxxx
 Authored Book: Author, A. A. (Year). Title of work. Publisher. https://doi.org/xxxxx
 Edited Book Chapter: Author, A. A. (Year). Title of chapter. In E. E. Editor (Ed.), Title of book (pp. xx–xx). Publisher.
@@ -150,10 +179,13 @@ Context from the user's indexed journals:
 Available APA references (use these exact formats for in-text citation author names and years):
 {apa_references}"""
 
+        if web_results:
+            prompt += web_results
+
         prompt += f"""
 
 Question: {question}
 
-Answer the question directly using the indexed journals above. Use the APA citation rules provided. When multiple papers support a claim, cite them: (Author1, Year1; Author2, Year2). Do NOT start with formal preambles — just answer naturally."""
+Read ALL the context chunks above carefully. Answer the question using information from the indexed journals. Cite sources with (Author, Year) or Author (Year) as appropriate. When multiple papers support a claim, cite them: (Author1, Year1; Author2, Year2). Synthesize across chunks — the answer may require combining information from multiple papers. Do NOT start with formal preambles — just answer naturally."""
 
         return prompt

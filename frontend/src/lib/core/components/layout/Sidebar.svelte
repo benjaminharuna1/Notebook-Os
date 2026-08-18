@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { currentUser, token } from '$lib/features/auth/store';
   import { logout } from '$lib/features/auth/api';
-  import { listSessions, deleteSession } from '$lib/features/chat/api';
+  import { listSessions, deleteSession, renameSession } from '$lib/features/chat/api';
   import { getProject } from '$lib/features/projects/api';
   import type { ChatSession } from '$lib/features/chat/types';
   import type { Project } from '$lib/features/projects/types';
@@ -16,6 +16,8 @@
 
   let sessions = $state<ChatSession[]>([]);
   let project = $state<Project | null>(null);
+  let renamingId = $state<string | null>(null);
+  let renameValue = $state('');
 
   const projectId = $derived.by(() => {
     const m = /^\/projects\/([^/]+)/.exec($page.url.pathname);
@@ -77,6 +79,24 @@
     if ($page.url.pathname.endsWith(id)) {
       goto(`${sessionsBase}?new`);
     }
+  }
+
+  function startRename(s: ChatSession) {
+    renamingId = s.id;
+    renameValue = s.title || '';
+  }
+
+  async function confirmRename(id: string) {
+    const title = renameValue.trim();
+    renamingId = null;
+    if (!title) return;
+    await renameSession(id, title);
+    sessions = sessions.map((s) => (s.id === id ? { ...s, title } : s));
+  }
+
+  function cancelRename() {
+    renamingId = null;
+    renameValue = '';
   }
 
   async function handleLogout() {
@@ -149,14 +169,28 @@
       {:else}
         {#each sessions as s (s.id)}
           <div class="group flex items-center">
-            <a
-              href={`${sessionsBase}/${s.id}`}
-              class="flex-1 truncate rounded-lg px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 {$page.url.pathname.endsWith(s.id)
-                ? 'bg-indigo-50 text-indigo-700 font-medium'
-                : ''}"
-            >
-              {s.title || 'Untitled'}
-            </a>
+            {#if renamingId === s.id}
+              <input
+                bind:value={renameValue}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter') confirmRename(s.id);
+                  if (e.key === 'Escape') cancelRename();
+                }}
+                onblur={() => confirmRename(s.id)}
+                class="flex-1 rounded-lg border border-indigo-300 bg-white px-2 py-1 text-xs text-slate-700 outline-none focus:border-indigo-500"
+                autofocus
+              />
+            {:else}
+              <a
+                href={`${sessionsBase}/${s.id}`}
+                ondblclick={() => startRename(s)}
+                class="flex-1 truncate rounded-lg px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 {$page.url.pathname.endsWith(s.id)
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : ''}"
+              >
+                {s.title || 'Untitled'}
+              </a>
+            {/if}
             <button
               onclick={() => removeSession(s.id)}
               class="hidden px-1 text-xs text-slate-400 hover:text-red-500 group-hover:block"

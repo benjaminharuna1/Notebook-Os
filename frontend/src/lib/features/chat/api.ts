@@ -41,3 +41,7 @@ export async function getSession(id: string): Promise<{ session: ChatSession; me
 export async function deleteSession(id: string): Promise<{ success: boolean }> {
   return api.delete<{ success: boolean }>(`/chat/sessions/${id}`);
 }
+
+export async function renameSession(id: string, title: string): Promise<{ success: boolean; title: string }> {
+  return api.patch<{ success: boolean; title: string }>(`/chat/sessions/${id}`, { title });
+}

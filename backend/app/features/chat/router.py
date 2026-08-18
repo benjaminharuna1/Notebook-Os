@@ -48,3 +48,18 @@ async def delete_session(
 ):
     service = ChatService(db)
     return service.delete_session(session_id, current_user["id"])
+
+
+@router.patch("/chat/sessions/{session_id}")
+async def rename_session(
+    session_id: str,
+    body: dict,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    title = (body.get("title") or "").strip()
+    if not title:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Title is required")
+    service = ChatService(db)
+    return service.rename_session(session_id, current_user["id"], title)

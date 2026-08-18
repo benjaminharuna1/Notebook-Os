@@ -4,7 +4,7 @@ from typing import List, Optional
 
 class SearchRequest(BaseModel):
     query: str
-    top_k: int = 5
+    top_k: int = 15
     document_ids: Optional[List[str]] = None
     project_id: Optional[str] = None
     include_keyword: bool = True

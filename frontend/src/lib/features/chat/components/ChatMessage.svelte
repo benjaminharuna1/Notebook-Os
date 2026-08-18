@@ -48,14 +48,28 @@
     return refs;
   });
 
-  // Build citation map: "Surname, Year" → reference index
+  // Build citation map: normalized "surname, year" → reference index
+  // Stores multiple forms per ref to handle "&" vs "and", spacing, etc.
   const citationMap = $derived.by(() => {
     const map = new Map<string, number>();
     for (const ref of references) {
-      const m = ref.apa.match(/^([A-Z][a-z\u00C0-\u024F]+(?:\s(?:de|da|von|van|di|el|al))?)/);
+      const m = ref.apa.match(/^([A-Z][a-z\u00C0-\u024F]+(?:[\s-]+(?:de|da|von|van|di|el|al))?)/);
       const ym = ref.apa.match(/\((\d{4}[a-z]?)\)/);
       if (m && ym) {
-        map.set(`${m[1]}, ${ym[1]}`.toLowerCase(), ref.index);
+        const surname = m[1].trim().toLowerCase();
+        const year = ym[1];
+        // Primary: "surname, year"
+        map.set(`${surname}, ${year}`, ref.index);
+        // Also try extracting second author for multi-author refs like "Padilla-Fernandez M. D. and Nuthall P. (2001)"
+        const multiM = ref.apa.match(/^([A-Z][a-z\u00C0-\u024F]+(?:[\s-]+(?:de|da|von|van|di|el|al))?)\s+(?:and|&)\s+([A-Z][a-z\u00C0-\u024F]+(?:[\s-]+(?:de|da|von|van|di|el|al))?)/i);
+        if (multiM) {
+          const s1 = multiM[1].trim().toLowerCase();
+          const s2 = multiM[2].trim().toLowerCase();
+          // "surname1 & surname2, year" and "surname1 and surname2, year"
+          map.set(`${s1} & ${s2}, ${year}`, ref.index);
+          map.set(`${s1} and ${s2}, ${year}`, ref.index);
+          map.set(`${s2}, ${year}`, ref.index);
+        }
       }
     }
     return map;
@@ -78,10 +92,36 @@
     const APA_TIP = 'citation-tip pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden w-80 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-2.5 text-left text-[11px] leading-snug text-slate-600 shadow-lg group-hover/ctx:block';
     const APA_LINK = 'citation-link group/ctx relative cursor-pointer text-indigo-600 font-medium hover:underline';
 
-    // 1. Linkify parenthetical: (Smith, 2024) or (Smith, 2024, p. 15)
+    // 1. Linkify secondary/indirect: (Smith, 2020, as cited in Jones, 2022) — match FIRST before direct
+    html = html.replace(/\(([^()]+?,\s*\d{4}[a-z]?(?:,\s*p\.\s*\d+)?\s*,\s*as cited in\s+[^()]+?,\s*\d{4}[a-z]?)\)/g, (match, inner) => {
+      // Extract the SOURCE author (after "as cited in")
+      const srcM = inner.match(/as cited in\s+([A-Z][a-z\u00C0-\u024F]+(?:\s(?:de|da|von|van|di|el|al))?),\s*(\d{4}[a-z]?)/);
+      if (srcM) {
+        const key = `${srcM[1]}, ${srcM[2]}`.toLowerCase();
+        const idx = citationMap.get(key);
+        if (idx) {
+          const ref = references[idx - 1];
+          // Extract original author for tooltip label
+          const origM = inner.match(/^([A-Z][a-z\u00C0-\u024F]+)/);
+          const origLabel = origM ? origM[1] : 'Original';
+          const tipText = `Source: ${ref.apa.replace(/"/g, '&quot;')}\n${origLabel} is cited within this source — not directly indexed.`;
+          return `<span class="${APA_LINK}" data-ref="${idx}">${match}<span class="${APA_TIP}">${tipText}</span></span>`;
+        }
+      }
+      return match;
+    });
+
+    // 2. Linkify parenthetical direct: (Smith, 2024) or (Smith, 2024, p. 15) or (Smith & Jones, 2024)
     html = html.replace(/\(([^()]+?,\s*\d{4}[a-z]?(?:,\s*p\.\s*\d+)?)\)/g, (match, inner) => {
-      const key = inner.trim().toLowerCase();
-      const idx = citationMap.get(key);
+      let key = inner.trim().toLowerCase().replace(/\s*&\s*/g, ' and ');
+      let idx = citationMap.get(key);
+      // Fallback: try just first author surname + year
+      if (!idx) {
+        const fm = key.match(/^([a-z][a-z\u00C0-\u024F-]+(?:\s+(?:de|da|von|van|di|el|al))?)\s*,\s*(\d{4}[a-z]?)/);
+        if (fm) {
+          idx = citationMap.get(`${fm[1]}, ${fm[2]}`);
+        }
+      }
       if (idx) {
         const ref = references[idx - 1];
         return `<span class="${APA_LINK}" data-ref="${idx}">${match}<span class="${APA_TIP}">${ref.apa.replace(/"/g, '&quot;')}</span></span>`;
@@ -89,13 +129,42 @@
       return match;
     });
 
-    // 2. Linkify narrative: "Smith (2020)" or "Smith and Jones (2019)" or "Smith et al. (2021)"
-    html = html.replace(/([A-Z][a-z\u00C0-\u024F]+)\s+(?:and\s+[A-Z][a-z\u00C0-\u024F]+\s+)?(?:et al\.?\s*)?\((\d{4}[a-z]?)\)/g, (match, _author, year) => {
-      // Try to find a reference matching this year
-      const ref = references.find(r => {
-        const ym = r.apa.match(/\((\d{4}[a-z]?)\)/);
-        return ym && ym[1] === year;
-      });
+    // 3. Linkify narrative secondary: "Smith (2020, as cited in Jones, 2022)"
+    html = html.replace(/([A-Z][a-z\u00C0-\u024F]+)\s+\((\d{4}[a-z]?(?:,\s*p\.\s*\d+)?\s*,\s*as cited in\s+[A-Z][a-z\u00C0-\u024F]+(?:\s(?:de|da|von|van|di|el|al))?,\s*\d{4}[a-z]?)\)/g, (match, _origAuthor, inner) => {
+      const srcM = inner.match(/as cited in\s+([A-Z][a-z\u00C0-\u024F]+(?:\s(?:de|da|von|van|di|el|al))?),\s*(\d{4}[a-z]?)/);
+      if (srcM) {
+        const key = `${srcM[1]}, ${srcM[2]}`.toLowerCase();
+        const idx = citationMap.get(key);
+        if (idx) {
+          const ref = references[idx - 1];
+          const tipText = `Source: ${ref.apa.replace(/"/g, '&quot;')}\n${_origAuthor} is cited within this source — not directly indexed.`;
+          return `<span class="${APA_LINK}" data-ref="${idx}">${match}<span class="${APA_TIP}">${tipText}</span></span>`;
+        }
+      }
+      return match;
+    });
+
+    // 4. Linkify narrative direct: "Smith (2020)" or "Smith and Jones (2019)" or "Smith & Jones (2019)" or "Smith et al. (2021)"
+    html = html.replace(/([A-Z][a-z\u00C0-\u024F]+(?:[\s-]+(?:de|da|von|van|di|el|al))?)\s+(?:(?:and|&)\s+[A-Z][a-z\u00C0-\u024F]+(?:[\s-]+(?:de|da|von|van|di|el|al))?\s+)?(?:et al\.?\s*)?\((\d{4}[a-z]?)\)/g, (match, _author, year) => {
+      // Try full match with second author if present
+      const fullM = match.match(/^([A-Z][a-z\u00C0-\u024F]+(?:[\s-]+(?:de|da|von|van|di|el|al))?)\s+(?:(?:and|&)\s+([A-Z][a-z\u00C0-\u024F]+(?:[\s-]+(?:de|da|von|van|di|el|al))?)\s+)?/);
+      let key = `${_author.toLowerCase()} & ?, ${year}`;
+      let ref: typeof references[0] | undefined;
+      // Try two-author lookup
+      if (fullM && fullM[2]) {
+        const k2a = `${fullM[1].toLowerCase()} & ${fullM[2].toLowerCase()}, ${year}`;
+        const k2b = `${fullM[1].toLowerCase()} and ${fullM[2].toLowerCase()}, ${year}`;
+        ref = references.find(r => {
+          const rk = citationMap.get(k2a) || citationMap.get(k2b);
+          return rk === r.index;
+        });
+      }
+      // Fallback: single author lookup
+      if (!ref) {
+        const k1 = `${_author.toLowerCase()}, ${year}`;
+        const idx1 = citationMap.get(k1);
+        if (idx1) ref = references[idx1 - 1];
+      }
       if (ref) {
         return `<span class="${APA_LINK}" data-ref="${ref.index}">${match}<span class="${APA_TIP}">${ref.apa.replace(/"/g, '&quot;')}</span></span>`;
       }

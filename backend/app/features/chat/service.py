@@ -207,19 +207,183 @@ class ChatService:
 
         search_req = SearchRequest(
             query=effective_message,
-            top_k=req.top_k if hasattr(req, "top_k") else 10,
+            top_k=req.top_k if hasattr(req, "top_k") else 15,
             document_ids=req.document_ids,
             project_id=project_id,
         )
         search_results = await self.search_service.search(search_req, user_id)
 
-        # Fix 5: Filter low-quality results (score < 0.3) but keep at least top 3
+        # Fix 5: Soft filter — keep results with score >= 0.2, always keep top 5
         raw_sources = search_results.results
-        if len(raw_sources) > 3:
-            good = [s for s in raw_sources if getattr(s, "score", 0) >= 0.3]
-            sources = good if len(good) >= 3 else raw_sources[:3]
+        if len(raw_sources) > 5:
+            good = [s for s in raw_sources if getattr(s, "score", 0) >= 0.2]
+            sources = good if len(good) >= 5 else raw_sources[:5]
         else:
             sources = raw_sources
+
+        # Query expansion: run a second search with key terms extracted from
+        # the question to catch semantically related chunks
+        import re as _re
+        stop_words = {
+            "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+            "have", "has", "had", "do", "does", "did", "will", "would", "could",
+            "should", "may", "might", "shall", "can", "need", "dare", "ought",
+            "used", "what", "which", "who", "whom", "this", "that", "these",
+            "those", "i", "me", "my", "we", "our", "you", "your", "he", "him",
+            "his", "she", "her", "it", "its", "they", "them", "their", "about",
+            "for", "from", "in", "on", "at", "to", "of", "with", "by", "as",
+            "into", "through", "during", "before", "after", "above", "below",
+            "between", "under", "again", "then", "once", "here", "there", "when",
+            "where", "why", "how", "all", "both", "each", "few", "more", "most",
+            "other", "some", "such", "no", "nor", "not", "only", "own", "same",
+            "so", "than", "too", "very", "just", "don", "now", "and", "but",
+            "or", "if", "while", "because", "although", "though", "since",
+            "unless", "until", "whether", "whereas",
+        }
+        words = _re.findall(r'[a-zA-Z]{3,}', effective_message.lower())
+        key_terms = [w for w in words if w not in stop_words]
+        if len(key_terms) >= 2:
+            expansion_query = " ".join(key_terms[:8])
+            expansion_req = SearchRequest(
+                query=expansion_query,
+                top_k=10,
+                document_ids=req.document_ids,
+                project_id=project_id,
+            )
+            expansion_results = await self.search_service.search(expansion_req, user_id)
+            existing_ids = {s.chunk_id for s in sources}
+            for er in expansion_results.results:
+                if er.chunk_id not in existing_ids and getattr(er, "score", 0) >= 0.25:
+                    sources.append(er)
+                    existing_ids.add(er.chunk_id)
+
+        # If user is asking about a specific reference, do aggressive fallback
+        # to find chunks mentioning that reference. Match on:
+        #   1. Both surnames + year (most precise)
+        #   2. Either surname + year
+        #   3. Both surnames alone (broadest)
+        import re as _re
+        # Match "Surname & Surname, Year" or "Surname and Surname (Year)" etc.
+        author_year_match = _re.search(
+            r'([A-Z][a-z\u00C0-\u024F]+(?:[\s-]+(?:de|da|von|van|di|el|al))?)\s*(?:&|and)\s*([A-Z][a-z\u00C0-\u024F]+(?:[\s-]+(?:de|da|von|van|di|el|al))?),?\s*(\d{4})',
+            effective_message,
+        )
+        # Also match single author + year: "Surname, Year" or "Surname (Year)"
+        single_author_match = _re.search(
+            r'([A-Z][a-z\u00C0-\u024F]+(?:[\s-]+(?:de|da|von|van|di|el|al))?),?\s*(\d{4})',
+            effective_message,
+        )
+        if author_year_match:
+            surname1 = author_year_match.group(1).lower()
+            surname2 = author_year_match.group(2).lower()
+            year = author_year_match.group(3)
+        elif single_author_match:
+            surname1 = single_author_match.group(1).lower()
+            surname2 = ""
+            year = single_author_match.group(2)
+        else:
+            surname1 = ""
+            surname2 = ""
+            year = ""
+
+        if surname1 and len(sources) < 10:
+            existing_ids = {s.chunk_id for s in sources}
+            fallback_rows = []
+
+            # Pass 1: both surnames + year (highest precision)
+            if surname2:
+                fallback_rows = self.db.execute(
+                    """SELECT c.id AS chunk_id, c.content, c.document_id, c.page_number,
+                              d.title AS document_title
+                       FROM chunks c JOIN documents d ON d.id = c.document_id
+                       WHERE (c.content LIKE ? COLLATE NOCASE
+                          AND c.content LIKE ? COLLATE NOCASE
+                          AND c.content LIKE ? COLLATE NOCASE)
+                         AND d.project_id = ?
+                       ORDER BY c.rowid LIMIT 10""",
+                    (f"%{surname1}%", f"%{surname2}%", f"%{year}%", project_id),
+                ).fetchall()
+
+            # Pass 2: surname1 + year (still precise)
+            if len(fallback_rows) < 3:
+                pass2 = self.db.execute(
+                    """SELECT c.id AS chunk_id, c.content, c.document_id, c.page_number,
+                              d.title AS document_title
+                       FROM chunks c JOIN documents d ON d.id = c.document_id
+                       WHERE (c.content LIKE ? COLLATE NOCASE AND c.content LIKE ? COLLATE NOCASE)
+                         AND d.project_id = ?
+                       ORDER BY c.rowid LIMIT 10""",
+                    (f"%{surname1}%", f"%{year}%", project_id),
+                ).fetchall()
+                existing_ids_pass2 = {r["chunk_id"] for r in fallback_rows}
+                for r in pass2:
+                    if r["chunk_id"] not in existing_ids_pass2:
+                        fallback_rows.append(r)
+
+            # Pass 3: both surnames without year (broadest)
+            if surname2 and len(fallback_rows) < 3:
+                pass3 = self.db.execute(
+                    """SELECT c.id AS chunk_id, c.content, c.document_id, c.page_number,
+                              d.title AS document_title
+                       FROM chunks c JOIN documents d ON d.id = c.document_id
+                       WHERE (c.content LIKE ? COLLATE NOCASE AND c.content LIKE ? COLLATE NOCASE)
+                         AND d.project_id = ?
+                       ORDER BY c.rowid LIMIT 10""",
+                    (f"%{surname1}%", f"%{surname2}%", project_id),
+                ).fetchall()
+                existing_ids_pass3 = {r["chunk_id"] for r in fallback_rows}
+                for r in pass3:
+                    if r["chunk_id"] not in existing_ids_pass3:
+                        fallback_rows.append(r)
+
+            for row in fallback_rows:
+                if row["chunk_id"] not in existing_ids:
+                    content_lower = (row["content"] or "").lower()
+                    # Score based on how many parts matched
+                    has_s2 = surname2 in content_lower if surname2 else False
+                    has_yr = year in content_lower
+                    if has_s2 and has_yr:
+                        score = 0.9
+                    elif has_yr or has_s2:
+                        score = 0.7
+                    else:
+                        score = 0.4
+                    sources.append(type("FallbackSource", (), {
+                        "chunk_id": row["chunk_id"],
+                        "content": row["content"],
+                        "score": score,
+                        "document_id": row["document_id"],
+                        "document_title": row["document_title"],
+                        "page_number": row["page_number"],
+                    })())
+                    existing_ids.add(row["chunk_id"])
+
+        # Web search fallback: if user asks about a specific reference and
+        # nothing in indexed papers contains it, search the web for it
+        web_results_text = ""
+        if surname1:
+            # Check if any source chunk actually mentions this author
+            ref_found = False
+            for s in sources:
+                content_lower = (getattr(s, "content", "") or "").lower()
+                if surname1.lower() in content_lower:
+                    if not surname2 or surname2.lower() in content_lower:
+                        ref_found = True
+                        break
+            if not ref_found:
+                from app.features.chat.web_search import web_search, format_web_results
+                search_name = f"{surname1} {surname2}".strip() if surname2 else surname1
+                query = f"{search_name} {year} APA reference"
+                web_hits = await web_search(query, num_results=5)
+                if web_hits:
+                    web_results_text = (
+                        "\n\nIMPORTANT: The reference was NOT found in the indexed journals. "
+                        "Below are web search results for this reference. Use them to provide "
+                        "the APA reference and explain that it was found via web search, not "
+                        "from the indexed journals. Suggest the user download and index the paper "
+                        "if they want it available locally.\n\n"
+                        + format_web_results(web_hits)
+                    )
 
         model = self.model_service.get_active_model(user_id)
         skills_svc = SkillsService(self.db)
@@ -260,6 +424,7 @@ class ChatService:
             lit_entries_context=lit_ctx,
             slash_extra=slash_extra,
             apa_references=apa_references_str,
+            web_results=web_results_text,
         )
 
         # Fix 4: Cap conversation history to last 20 messages
@@ -324,6 +489,13 @@ class ChatService:
     def delete_session(self, session_id: str, user_id: str):
         self.repo.delete_session(session_id, user_id)
         return {"success": True}
+
+    def rename_session(self, session_id: str, user_id: str, title: str):
+        session = self.repo.get_session(session_id, user_id)
+        if not session:
+            raise self._not_found("Session not found")
+        self.repo.update_title(session_id, title)
+        return {"success": True, "title": title}
 
     @staticmethod
     def _not_found(message: str, status_code: int = 404):

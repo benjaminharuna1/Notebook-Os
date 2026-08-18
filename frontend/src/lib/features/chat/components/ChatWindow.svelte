@@ -58,14 +58,18 @@
   function failAssistant(error: Error) {
     streaming.set(false);
     abortFn = null;
+    const msg = error?.message || 'An unexpected error occurred';
     messages.update((m) => {
       const last = m[m.length - 1];
       if (last && last.role === 'assistant') {
-        last.content = `⚠️ ${error.message}`;
+        // Only show error prefix if the message isn't already an error
+        if (!last.content?.startsWith('\u26a0\ufe0f')) {
+          last.content = `\u26a0\ufe0f ${msg}`;
+        }
       }
       return m;
     });
-    toasts.add(error.message, 'error');
+    toasts.add(msg, 'error');
   }
 
   function stopStreaming() {
@@ -100,6 +104,7 @@
       projectId,
       docIds,
       (chunk) => {
+        if (chunk == null) return;
         messages.update((m) => {
           const last = m[m.length - 1];
           if (last && last.id === assistantId) {
@@ -215,6 +220,7 @@
       projectId,
       docIds,
       (chunk) => {
+        if (chunk == null) return;
         messages.update((m) => {
           const last = m[m.length - 1];
           if (last && last.id === assistantId) {
