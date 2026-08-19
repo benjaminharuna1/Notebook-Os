@@ -86,6 +86,10 @@
     options?: { regenerate?: boolean },
   ) {
     streaming.set(true);
+    const mergedOptions = {
+      ...options,
+      ...(slashCommand ? { slashCommand } : {}),
+    };
 
     const assistantMsg: ChatMessageType = {
       id: crypto.randomUUID(),
@@ -141,7 +145,7 @@
         }
       },
       failAssistant,
-      options,
+      mergedOptions,
     );
   }
 

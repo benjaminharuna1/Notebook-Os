@@ -4,10 +4,13 @@ No API key required. Scrapes DuckDuckGo search results for academic
 reference lookup. Returns title, snippet, and URL for each result.
 """
 
+import logging
 import re
 from urllib.parse import quote_plus
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 async def web_search(query: str, num_results: int = 5) -> list[dict]:
@@ -25,6 +28,7 @@ async def web_search(query: str, num_results: int = 5) -> list[dict]:
             resp = await client.get(url, headers=headers)
             resp.raise_for_status()
     except Exception:
+        logger.debug("web_search failed for query: %s", query, exc_info=True)
         return []
 
     html = resp.text

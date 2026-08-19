@@ -168,6 +168,17 @@ def init_sqlite_db():
             user_edited        TEXT,
             updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS project_memory (
+            id          TEXT PRIMARY KEY,
+            project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            key         TEXT NOT NULL,
+            value       TEXT NOT NULL,
+            source      TEXT DEFAULT 'chat',
+            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(project_id, key)
+        );
     """)
 
     # Lightweight migrations for databases created before these columns existed.
@@ -202,11 +213,13 @@ def init_sqlite_db():
     for statement in (
         "CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id)",
         "CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id)",
         "CREATE INDEX IF NOT EXISTS idx_graph_history_lookup ON graph_history(user_id, project_id, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_graph_history_map ON graph_history(user_id, project_id, map_type, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_paper_references_paper ON paper_references(paper_id)",
         "CREATE INDEX IF NOT EXISTS idx_paper_references_matched ON paper_references(matched_paper_id)",
         "CREATE INDEX IF NOT EXISTS idx_literature_entries_project ON literature_entries(user_id, project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_project_memory_project ON project_memory(project_id, updated_at DESC)",
     ):
         try:
             cursor.execute(statement)

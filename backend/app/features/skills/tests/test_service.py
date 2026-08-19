@@ -6,7 +6,8 @@ from fastapi import HTTPException
 
 from app.core.config import settings
 from app.features.skills.schemas import SkillManifest
-from app.features.skills.service import SkillsService, load_catalog
+from app.features.skills.service import SkillsService, load_catalog, _catalog_cache, _catalog_cache_ts
+import app.features.skills.service as _svc_mod
 
 
 def _db() -> sqlite3.Connection:
@@ -40,6 +41,12 @@ def test_catalog_loads_bundled_skills():
 
 
 def test_load_catalog_supports_markdown_skill_folders(tmp_path, monkeypatch):
+    # Invalidate the module-level catalog cache so the test sees only the
+    # custom folder content.
+    _svc_mod._catalog_cache = None
+    _svc_mod._catalog_cache_ts = 0.0
+    _svc_mod._catalog_cache_dir = ""
+
     skill_dir = tmp_path / "custom-folder"
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text(

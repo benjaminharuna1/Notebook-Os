@@ -1,5 +1,7 @@
 from typing import List
 
+from app.core.config import settings
+
 
 class PromptBuilder:
 
@@ -31,6 +33,8 @@ class PromptBuilder:
         slash_extra: str = "",
         apa_references: str = "",
         web_results: str = "",
+        past_project_chats: str = "",
+        project_memory: str = "",
     ) -> str:
         # --- format source chunks ---
         raw_source_parts = []
@@ -39,8 +43,8 @@ class PromptBuilder:
                 f"[Indexed Paper: {s.document_title}, Page {s.page_number}]\n{s.content}"
             )
 
-        # Budget: 10000 tokens for search-result chunks (most important context)
-        source_parts = self._truncate_to_budget(raw_source_parts, 10000)
+        # Budget for search-result chunks (most important context)
+        source_parts = self._truncate_to_budget(raw_source_parts, settings.PROMPT_BUDGET_SOURCES)
         context = "\n\n".join(source_parts)
 
         has_sources = len(source_parts) > 0
@@ -156,15 +160,34 @@ Do NOT attempt to answer using general knowledge. Do NOT guess."""
                 f"{cluster_context}"
             )
 
-        # --- literature entries (budget: 4000 tokens) ---
+        # --- literature entries ---
         if lit_entries_context:
             lit_tokens = self._estimate_tokens(lit_entries_context)
-            if lit_tokens > 4000:
-                # Truncate by cutting entries (each ~200 tokens, so keep ~20)
-                lit_entries_context = lit_entries_context[:4000 * 4]
+            if lit_tokens > settings.PROMPT_BUDGET_LIT_ENTRIES:
+                lit_entries_context = lit_entries_context[:settings.PROMPT_BUDGET_LIT_ENTRIES * 4]
             prompt += (
                 "\n\nLiterature mapping entries for papers in this project:\n"
                 f"{lit_entries_context}"
+            )
+
+        # --- past project conversations ---
+        if past_project_chats:
+            pc_tokens = self._estimate_tokens(past_project_chats)
+            if pc_tokens > settings.PROMPT_BUDGET_PAST_CHATS:
+                past_project_chats = past_project_chats[:settings.PROMPT_BUDGET_PAST_CHATS * 4]
+            prompt += (
+                "\n\nPrevious conversations in this project (for context — do NOT repeat this information unless the user asks):\n"
+                f"{past_project_chats}"
+            )
+
+        # --- accumulated project memory (learned facts/preferences) ---
+        if project_memory:
+            pm_tokens = self._estimate_tokens(project_memory)
+            if pm_tokens > settings.PROMPT_BUDGET_PROJECT_MEMORY:
+                project_memory = project_memory[:settings.PROMPT_BUDGET_PROJECT_MEMORY * 4]
+            prompt += (
+                "\n\nAccumulated knowledge about this project (learned from prior interactions):\n"
+                f"{project_memory}"
             )
 
         # --- search results and question (MOST IMPORTANT — at the end for recency bias) ---

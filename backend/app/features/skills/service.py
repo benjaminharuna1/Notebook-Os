@@ -1,10 +1,18 @@
 import json
+import time
 from pathlib import Path
 
 from fastapi import HTTPException, status
 
 from app.core.config import settings
 from app.features.skills.schemas import SkillManifest
+
+# Module-level catalog cache: avoids re-scanning the filesystem on every
+# chat request.  Invalidated after 5 minutes or when the catalog dir changes.
+_catalog_cache: list[SkillManifest] | None = None
+_catalog_cache_ts: float = 0.0
+_catalog_cache_dir: str = ""
+_CATALOG_CACHE_TTL: float = 300.0
 
 
 def _catalog_dir() -> Path:
@@ -44,9 +52,22 @@ def _manifest_from_markdown(folder: Path) -> SkillManifest:
 
 
 def load_catalog() -> list[SkillManifest]:
+    global _catalog_cache, _catalog_cache_ts, _catalog_cache_dir
+    now = time.monotonic()
+    current_dir = str(_catalog_dir())
+    if (
+        _catalog_cache is not None
+        and _catalog_cache_dir == current_dir
+        and (now - _catalog_cache_ts) < _CATALOG_CACHE_TTL
+    ):
+        return _catalog_cache
+
     manifests = []
     catalog_dir = _catalog_dir()
     if not catalog_dir.is_dir():
+        _catalog_cache = manifests
+        _catalog_cache_ts = now
+        _catalog_cache_dir = current_dir
         return manifests
     for path in sorted(catalog_dir.glob("*.json")):
         try:
@@ -62,6 +83,9 @@ def load_catalog() -> list[SkillManifest]:
         except Exception:
             # skip malformed markdown skills rather than breaking the whole app
             continue
+    _catalog_cache = manifests
+    _catalog_cache_ts = now
+    _catalog_cache_dir = current_dir
     return manifests
 
 
