@@ -23,6 +23,11 @@ frontend/dist/
 frontend/.env
 frontend/.env.local
 
+# ===== Desktop (Electron) =====
+desktop/node_modules/
+desktop/release/
+desktop/.env
+
 # ===== Env & secrets =====
 .env
 .env.*

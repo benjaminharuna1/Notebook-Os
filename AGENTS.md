@@ -8,6 +8,7 @@ Local-first research assistant that ingests, processes, and reasons over academi
 Notebook Os/
 ├── backend/app/              ← FastAPI API (14 feature modules)
 ├── frontend/src/             ← SvelteKit UI (mirrors backend features)
+├── desktop/                  ← Electron desktop wrapper
 ├── backend/skills/           ← 8 AI skill definitions (JSON)
 ├── backend/_system/          ← Factory reference (prompts, schemas)
 ├── data/                     ← Runtime: SQLite, ChromaDB, uploads (gitignored)
@@ -32,6 +33,7 @@ Notebook Os/
 | Frontend API layer | `frontend/src/lib/features/{name}/api.ts` |
 | Run tests | `cd backend && .venv\Scripts\python.exe -m pytest -q` |
 | Build frontend | `cd frontend && cmd /c "npm run build"` |
+| Build desktop app | `cd desktop && npm run build:all` |
 
 ## Pipeline order (feature execution)
 

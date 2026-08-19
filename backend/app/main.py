@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.events import lifespan
@@ -52,6 +53,16 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health():
         return {"status": "ok"}
+
+    # Serve static frontend files in desktop mode
+    import os
+    from pathlib import Path
+
+    if os.environ.get("APP_ENV") == "desktop":
+        # In desktop mode, frontend build is in resources/frontend/build/
+        frontend_build = Path(os.environ.get("FRONTEND_PATH", "frontend/build"))
+        if frontend_build.exists():
+            app.mount("/", StaticFiles(directory=str(frontend_build), html=True), name="static")
 
     return app
 
