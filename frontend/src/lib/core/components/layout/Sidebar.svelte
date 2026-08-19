@@ -109,7 +109,7 @@
 
 <aside class="flex w-56 flex-col border-r border-slate-200 bg-slate-50">
   <div class="flex items-center gap-2 border-b border-slate-200 px-4 py-4">
-    <a href="/projects" class="text-lg font-bold text-indigo-600">Notebook AI</a>
+    <a href="/projects" class="text-lg font-bold text-indigo-600">Notebook AI OS</a>
   </div>
 
   <nav class="flex flex-col gap-1 p-2">

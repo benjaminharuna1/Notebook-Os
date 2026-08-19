@@ -1,6 +1,6 @@
 # backend/app — FastAPI API
 
-One job: serve the Notebook OS REST API for research paper management and AI chat.
+One job: serve the Notebook AI OS REST API for research paper management and AI chat.
 
 ## Pipeline (feature execution order)
 

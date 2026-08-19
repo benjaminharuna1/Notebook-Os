@@ -1,6 +1,6 @@
-# Notebook OS Frontend
+# Notebook AI OS Frontend
 
-SvelteKit + TypeScript + Tailwind UI for the Notebook OS research assistant.
+SvelteKit + TypeScript + Tailwind UI for the Notebook AI OS research assistant.
 
 ## Directory tree
 

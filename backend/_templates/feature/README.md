@@ -1,6 +1,6 @@
 # Feature Template
 
-Use this skeleton to create new features for Notebook OS.
+Use this skeleton to create new features for Notebook AI OS.
 
 ## How to use
 

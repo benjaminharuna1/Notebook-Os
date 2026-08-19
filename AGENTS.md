@@ -1,4 +1,4 @@
-# Notebook OS — AI Research Assistant
+# Notebook AI OS — AI Research Assistant
 
 Local-first research assistant that ingests, processes, and reasons over academic papers.
 
