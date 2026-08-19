@@ -26,13 +26,13 @@ npm run build:all
 ### Required
 - **Node.js** 18+ — https://nodejs.org
 - **Python** 3.10+ with `uv` package manager — https://docs.astral.sh/uv/
-- **PyInstaller** — `pip install pyinstaller`
+- **PyInstaller** — `pip install pyinstaller` (or `uv pip install pyinstaller`)
 
 ### Verify installations
 ```bash
 node --version    # Should show v18+
 python --version  # Should show 3.10+
-pyinstaller --version
+pyinstaller --version  # Should show 6.x.x
 ```
 
 ## One-Time Setup
@@ -102,7 +102,7 @@ Output: `frontend/build/` (static HTML/CSS/JS)
 
 ```bash
 cd backend
-pyinstaller backend.spec --clean --noconfirm
+../backend/.venv/Scripts/pyinstaller.exe backend.spec --clean --noconfirm
 ```
 
 Output: `backend/dist/notebook-backend/` (Python app + dependencies)

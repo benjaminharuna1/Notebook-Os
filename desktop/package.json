@@ -6,16 +6,18 @@
   "scripts": {
     "start": "electron .",
     "build:frontend": "cd ../frontend && npm run build",
-    "build:backend": "cd ../backend && pyinstaller backend.spec --clean --noconfirm",
-    "build:electron": "electron-builder --win",
+    "build:backend": "cd ../backend && ../backend/.venv/Scripts/pyinstaller.exe backend.spec --clean --noconfirm",
+    "build:electron": "npx electron-builder --win",
     "build:all": "npm run build:frontend && npm run build:backend && npm run build:electron",
     "dev": "concurrently \"cd ../backend && .venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8199 --reload\" \"cd ../frontend && npm run dev\" \"wait-on http://127.0.0.1:8199/health && electron .\""
   },
-  "dependencies": {},
+  "dependencies": {
+    "app-builder-bin": "^5.0.0-alpha.10"
+  },
   "devDependencies": {
+    "concurrently": "^9.0.0",
     "electron": "^35.0.0",
     "electron-builder": "^25.0.0",
-    "concurrently": "^9.0.0",
     "wait-on": "^8.0.0"
   },
   "build": {
@@ -55,7 +57,8 @@
         }
       ],
       "icon": "assets/icon.ico",
-      "signingHashAlgorithms": null
+      "signAndEditExecutable": false,
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "oneClick": false,
