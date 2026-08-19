@@ -1,0 +1,88 @@
+{
+  "name": "notebook-ai-os",
+  "version": "0.1.0",
+  "description": "Notebook AI OS - Local-first AI research assistant",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:frontend": "cd ../frontend && npm run build",
+    "build:backend": "cd ../backend && pyinstaller backend.spec --clean --noconfirm",
+    "build:electron": "electron-builder --win",
+    "build:all": "npm run build:frontend && npm run build:backend && npm run build:electron",
+    "dev": "concurrently \"cd ../backend && .venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8199 --reload\" \"cd ../frontend && npm run dev\" \"wait-on http://127.0.0.1:8199/health && electron .\""
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.0.0",
+    "concurrently": "^9.0.0",
+    "wait-on": "^8.0.0"
+  },
+  "build": {
+    "appId": "com.notebookai.os",
+    "productName": "Notebook AI OS",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist/notebook-backend",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../frontend/build",
+        "to": "frontend/build",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "signingHashAlgorithms": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Notebook AI OS",
+      "runAfterFinish": true,
+      "installerHeaderIcon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "assets/icon.png",
+      "category": "Science"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.science"
+    }
+  }
+}
