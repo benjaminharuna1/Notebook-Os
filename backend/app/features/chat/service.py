@@ -217,11 +217,11 @@ class ChatService:
         )
         search_results = await self.search_service.search(searchreq, user_id)
 
-        # Fix 5: Soft filter — keep results with score >= 0.2, always keep top 5
+        # Fix 5: Soft filter — keep results with score >= CHAT_MIN_SCORE, always keep top CHAT_MIN_RESULTS
         raw_sources = search_results.results
-        if len(raw_sources) > 5:
-            good = [s for s in raw_sources if getattr(s, "score", 0) >= 0.2]
-            sources = good if len(good) >= 5 else raw_sources[:5]
+        if len(raw_sources) > settings.CHAT_MIN_RESULTS:
+            good = [s for s in raw_sources if getattr(s, "score", 0) >= settings.CHAT_MIN_SCORE]
+            sources = good if len(good) >= settings.CHAT_MIN_RESULTS else raw_sources[:settings.CHAT_MIN_RESULTS]
         else:
             sources = raw_sources
 
@@ -246,17 +246,17 @@ class ChatService:
         words = re.findall(r'[a-zA-Z]{3,}', effective_message.lower())
         key_terms = [w for w in words if w not in stop_words]
         if len(key_terms) >= 2:
-            expansion_query = " ".join(key_terms[:8])
+            expansion_query = " ".join(key_terms[:settings.CHAT_EXPANSION_MAX_TERMS])
             expansionreq = SearchRequest(
                 query=expansion_query,
-                top_k=10,
+                top_k=settings.CHAT_EXPANSION_TOP_K,
                 document_ids=req.document_ids,
                 project_id=project_id,
             )
             expansion_results = await self.search_service.search(expansionreq, user_id)
             existing_ids = {s.chunk_id for s in sources}
             for er in expansion_results.results:
-                if er.chunk_id not in existing_ids and getattr(er, "score", 0) >= 0.25:
+                if er.chunk_id not in existing_ids and getattr(er, "score", 0) >= settings.CHAT_EXPANSION_MIN_SCORE:
                     sources.append(er)
                     existing_ids.add(er.chunk_id)
 
@@ -373,10 +373,10 @@ class ChatService:
                         ref_found = True
                         break
             if not ref_found:
-                from app.features.chat.web_search import web_search, format_webresults
+                from app.features.chat.web_search import web_search, format_web_results
                 search_name = f"{surname1} {surname2}".strip() if surname2 else surname1
                 query = f"{search_name} {year} APA reference"
-                web_hits = await web_search(query, numresults=5)
+                web_hits = await web_search(query, num_results=5)
                 if web_hits:
                     webresults_text = (
                         "\n\nIMPORTANT: The reference was NOT found in the indexed journals. "
@@ -384,7 +384,7 @@ class ChatService:
                         "the APA reference and explain that it was found via web search, not "
                         "from the indexed journals. Suggest the user download and index the paper "
                         "if they want it available locally.\n\n"
-                        + format_webresults(web_hits)
+                        + format_web_results(web_hits)
                     )
 
         model = self.model_service.get_active_model(user_id)
@@ -401,10 +401,10 @@ class ChatService:
         # Build APA references string for the prompt
         doc_ids_for_refs = list({getattr(s, "document_id", None) for s in sources if getattr(s, "document_id", None)})
         apa_map: dict[str, str] = {}
-        if doc_ids_forrefs:
-            ph = ",".join("?" for _ in doc_ids_forrefs)
+        if doc_ids_for_refs:
+            ph = ",".join("?" for _ in doc_ids_for_refs)
             for row in self.db.execute(
-                f"SELECT id, apareference FROM documents WHERE id IN ({ph})", doc_ids_forrefs
+                f"SELECT id, apa_reference FROM documents WHERE id IN ({ph})", doc_ids_for_refs
             ).fetchall():
                 if row["apareference"]:
                     apa_map[row["id"]] = row["apa_reference"]
@@ -430,7 +430,7 @@ class ChatService:
                 past_lines = []
                 for m in past_chats:
                     role_label = "User" if m["role"] == "user" else "Assistant"
-                    past_lines.append(f"[{role_label}]: {m['content'][:500]}")
+                    past_lines.append(f"[{role_label}]: {m['content'][:settings.CHAT_CONTENT_TRUNCATE]}")
                 past_chats_ctx = "\n".join(past_lines)
 
         # --- project memory (accumulated learning) ---
@@ -498,13 +498,15 @@ class ChatService:
                     self._learn_from_interaction(
                         project_id, effective_message, "".join(answer)
                     )
+                    # Mirror to inspectable files (ICM invariant #6)
+                    self.repo.mirror_memory_to_files(project_id)
                 except Exception:
                     logger.warning("learn_from_interaction failed for %s", project_id, exc_info=True)
 
             # Auto-generate a session title from the first user message
             if is_new_session:
                 try:
-                    title = req.message.strip()[:80]
+                    title = req.message.strip()[:settings.CHAT_TITLE_TRUNCATE]
                     self.repo.update_title(session_id, title)
                 except Exception:
                     logger.debug("auto-title failed for %s", session_id)
@@ -519,7 +521,7 @@ class ChatService:
 
     def get_session(self, session_id: str, user_id: str):
         session = self.repo.get_session(session_id, user_id)
-        messages = self.repo.get_messages(session_id, limit=50)
+        messages = self.repo.get_messages(session_id, limit=settings.CHAT_SESSION_MESSAGES_LIMIT)
         return {"session": session, "messages": messages}
 
     def delete_session(self, session_id: str, user_id: str):
@@ -551,8 +553,6 @@ class ChatService:
     # Auto-learning: extract topics, interests, and preferences
     # ------------------------------------------------------------------
 
-    _LEARN_MAX_PER_PROJECT = 200
-
     def _learn_from_interaction(self, project_id: str, user_msg: str, assistant_msg: str):
         """Extract lightweight facts from a conversation turn and persist them
         so future sessions can benefit.  Keeps things simple — no LLM call needed,
@@ -572,7 +572,7 @@ class ChatService:
                 if len(topic) > 5:
                     self.repo.add_project_memory(
                         project_id,
-                        key=f"interest:{topic.lower()[:60]}",
+                        key=f"interest:{topic.lower()[:settings.CHAT_TOPIC_KEY_TRUNCATE]}",
                         value=f"User asked about: {topic}",
                         source="chat_interest",
                     )
@@ -612,7 +612,7 @@ class ChatService:
         # 4) Track questions the user repeatedly asks (signals ongoing interest).
         #    Use a content hash to avoid collisions with unrelated questions.
         if '?' in user_msg and len(user_msg) > 10:
-            question_summary = user_msg[:120].rstrip('?.')
+            question_summary = user_msg[:settings.CHAT_QUESTION_TRUNCATE].rstrip('?.')
             import hashlib
             qhash = hashlib.md5(question_summary.encode()).hexdigest()[:12]
             self.repo.add_project_memory(
@@ -633,8 +633,8 @@ class ChatService:
             (project_id,),
         )
         row = cursor.fetchone()
-        if row and row["cnt"] > self._LEARN_MAX_PER_PROJECT:
-            excess = row["cnt"] - self._LEARN_MAX_PER_PROJECT
+        if row and row["cnt"] > settings.CHAT_LEARN_MAX_PER_PROJECT:
+            excess = row["cnt"] - settings.CHAT_LEARN_MAX_PER_PROJECT
             cursor.execute(
                 """DELETE FROM project_memory
                    WHERE id IN (

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from app.shared.id_utils import generate_id
 
 
@@ -170,3 +172,56 @@ class ChatRepository:
             (project_id, like, like),
         )
         return [dict(r) for r in cursor.fetchall()]
+
+    # --- file mirroring (inspectable output) ---
+
+    _MEMORY_DIR = Path(__file__).resolve().parents[3] / "data" / "project_memory"
+
+    def mirror_memory_to_files(self, project_id: str) -> None:
+        """Write project memory to inspectable markdown files in
+        data/project_memory/{project_id}/.  This follows ICM invariant #6:
+        every output is an edit surface a human can open, edit, and save."""
+        memories = self.get_project_memories(project_id, limit=200)
+        if not memories:
+            return
+
+        project_dir = self._MEMORY_DIR / project_id
+        project_dir.mkdir(parents=True, exist_ok=True)
+
+        # Group memories by source type
+        groups: dict[str, list[dict]] = {}
+        for mem in memories:
+            source = mem.get("source", "other")
+            groups.setdefault(source, []).append(mem)
+
+        # Write interests
+        interests = groups.get("chat_interest", [])
+        if interests:
+            lines = ["# Research Interests", "", "Auto-extracted from chat conversations.", ""]
+            for mem in interests:
+                lines.append(f"- {mem['value']}")
+            (project_dir / "interests.md").write_text("\n".join(lines), encoding="utf-8")
+
+        # Write references
+        refs = groups.get("chat_reference", [])
+        if refs:
+            lines = ["# Referenced Works", "", "Papers and authors the user has mentioned.", ""]
+            for mem in refs:
+                lines.append(f"- {mem['value']}")
+            (project_dir / "references.md").write_text("\n".join(lines), encoding="utf-8")
+
+        # Write preferences
+        prefs = groups.get("chat_preference", [])
+        if prefs:
+            lines = ["# User Preferences", "", "Detected from chat interactions.", ""]
+            for mem in prefs:
+                lines.append(f"- **{mem['key'].split(':', 1)[-1]}**: {mem['value']}")
+            (project_dir / "preferences.md").write_text("\n".join(lines), encoding="utf-8")
+
+        # Write question log
+        questions = groups.get("chat_question", [])
+        if questions:
+            lines = ["# Question Log", "", "Questions the user has asked (signals ongoing interest).", ""]
+            for mem in questions:
+                lines.append(f"- {mem['value']}")
+            (project_dir / "questions.md").write_text("\n".join(lines), encoding="utf-8")

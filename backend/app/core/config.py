@@ -76,6 +76,20 @@ class Settings(BaseSettings):
     CHAT_HISTORY_LIMIT: int = 20
     CHAT_PAST_CHATS_LIMIT: int = 10
     CHAT_MEMORY_LIMIT: int = 30
+    CHAT_MIN_SCORE: float = 0.2
+    CHAT_MIN_RESULTS: int = 5
+    CHAT_EXPANSION_TOP_K: int = 10
+    CHAT_EXPANSION_MIN_SCORE: float = 0.25
+    CHAT_EXPANSION_MAX_TERMS: int = 8
+    CHAT_FALLBACK_MIN_SOURCES: int = 10
+    CHAT_WEB_SEARCH_RESULTS: int = 5
+    CHAT_CONTENT_TRUNCATE: int = 500
+    CHAT_TITLE_TRUNCATE: int = 80
+    CHAT_SESSION_MESSAGES_LIMIT: int = 50
+    CHAT_LEARN_MAX_PER_PROJECT: int = 200
+    CHAT_TOPIC_KEY_TRUNCATE: int = 60
+    CHAT_QUESTION_TRUNCATE: int = 120
+    WEB_SEARCH_TIMEOUT: int = 10
 
     # Skill catalog directory. Leave empty to use the app-level skills folder
     # (backend/skills); point elsewhere (or at a registry mirror) to serve a

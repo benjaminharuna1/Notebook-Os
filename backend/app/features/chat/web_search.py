@@ -10,6 +10,8 @@ from urllib.parse import quote_plus
 
 import httpx
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +26,7 @@ async def web_search(query: str, num_results: int = 5) -> list[dict]:
         )
     }
     try:
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=settings.WEB_SEARCH_TIMEOUT, follow_redirects=True) as client:
             resp = await client.get(url, headers=headers)
             resp.raise_for_status()
     except Exception:
