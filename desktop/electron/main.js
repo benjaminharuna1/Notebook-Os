@@ -5,6 +5,7 @@ const http = require('http');
 const fs = require('fs');
 
 let pythonProcess = null;
+let frontendServer = null;
 let mainWindow = null;
 let splashWindow = null;
 let backendStarted = false;
@@ -13,6 +14,7 @@ let waitingForServer = false;
 let backend_stderr = '';
 
 const PYTHON_PORT = 8199;
+const FRONTEND_PORT = 8200;
 const HEALTH_CHECK_URL = `http://127.0.0.1:${PYTHON_PORT}/health`;
 const HEALTH_CHECK_RETRIES = 60;
 const HEALTH_CHECK_DELAY = 1000;
@@ -40,6 +42,13 @@ function getBackendCwd() {
   return path.join(__dirname, '..', '..', 'backend');
 }
 
+function getFrontendPath() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'frontend', 'build');
+  }
+  return path.join(__dirname, '..', '..', 'frontend', 'build');
+}
+
 function ensureDataDir() {
   const dataDir = getDataDir();
   const subdirs = ['', 'uploads', 'processed', 'chroma_db'];
@@ -56,6 +65,67 @@ function showErrorAndQuit(title, message) {
   console.error(`[Electron] ${title}: ${message}`);
   dialog.showErrorBox(title, message);
   app.quit();
+}
+
+function getMimeType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const types = {
+    '.html': 'text/html',
+    '.js': 'application/javascript',
+    '.css': 'text/css',
+    '.json': 'application/json',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.ico': 'image/x-icon',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+    '.ttf': 'font/ttf',
+    '.txt': 'text/plain',
+    '.map': 'application/json',
+  };
+  return types[ext] || 'application/octet-stream';
+}
+
+function startFrontendServer() {
+  return new Promise((resolve, reject) => {
+    const buildDir = getFrontendPath();
+    if (!fs.existsSync(buildDir)) {
+      reject(new Error(`Frontend build not found at: ${buildDir}`));
+      return;
+    }
+
+    frontendServer = http.createServer((req, res) => {
+      const urlPath = new URL(req.url, `http://localhost`).pathname;
+      let filePath = path.join(buildDir, urlPath === '/' ? 'index.html' : urlPath);
+
+      if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+        filePath = path.join(buildDir, 'index.html');
+      }
+
+      try {
+        const content = fs.readFileSync(filePath);
+        res.writeHead(200, { 'Content-Type': getMimeType(filePath) });
+        res.end(content);
+      } catch (err) {
+        res.writeHead(404);
+        res.end('Not found');
+      }
+    });
+
+    frontendServer.on('error', reject);
+
+    frontendServer.listen(FRONTEND_PORT, '127.0.0.1', () => {
+      console.log(`[Electron] Frontend server on http://127.0.0.1:${FRONTEND_PORT}`);
+      resolve();
+    });
+  });
+}
+
+function stopFrontendServer() {
+  if (frontendServer) {
+    frontendServer.close();
+    frontendServer = null;
+  }
 }
 
 function createSplashWindow() {
@@ -143,13 +213,8 @@ function startPythonBackend() {
     return;
   }
 
-  const frontendPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'frontend', 'build')
-    : path.join(__dirname, '..', '..', 'frontend', 'build');
-
   const env = {
     ...process.env,
-    APP_ENV: 'desktop',
     HOST: '127.0.0.1',
     PORT: String(PYTHON_PORT),
     DATABASE_URL: `sqlite+aiosqlite:///${path.join(dataDir, 'notebook.db')}`,
@@ -157,10 +222,6 @@ function startPythonBackend() {
     UPLOAD_DIR: path.join(dataDir, 'uploads'),
     PROCESSED_DIR: path.join(dataDir, 'processed'),
   };
-
-  if (frontendPath) {
-    env.FRONTEND_PATH = frontendPath;
-  }
 
   if (app.isPackaged) {
     pythonProcess = spawn(backendPath, [], {
@@ -205,7 +266,6 @@ function startPythonBackend() {
     console.log(`[Electron] Python exited with code ${code}`);
     pythonProcess = null;
     if (serverReady) {
-      // Backend crashed after we were running — restart it
       console.log('[Electron] Backend crashed, restarting...');
       backendStarted = false;
       serverReady = false;
@@ -220,6 +280,11 @@ function startPythonBackend() {
           }
         });
       }, 1000);
+    } else if (code !== null && code !== 0 && !serverReady) {
+      showErrorAndQuit(
+        'Backend crashed',
+        `The backend process exited with code ${code} before the server was ready.\n\n${backend_stderr || 'No error output.'}`
+      );
     }
   });
 }
@@ -311,13 +376,13 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
     show: false,
     titleBarStyle: 'default',
   });
 
-  mainWindow.loadURL(`http://127.0.0.1:${PYTHON_PORT}`);
+  mainWindow.loadURL(`http://127.0.0.1:${FRONTEND_PORT}`);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
@@ -326,6 +391,10 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event) => {
+    event.preventDefault();
   });
 
   mainWindow.on('closed', () => {
@@ -338,7 +407,6 @@ function createWindow() {
 }
 
 function killPythonBackend() {
-  // Kill by tracked PID first
   if (pythonProcess) {
     console.log(`[Electron] Killing Python backend (PID ${pythonProcess.pid})...`);
     killProcessTree(pythonProcess.pid);
@@ -346,7 +414,6 @@ function killPythonBackend() {
     return;
   }
 
-  // Fallback: find and kill whatever is listening on our port
   console.log(`[Electron] No tracked PID, scanning port ${PYTHON_PORT}...`);
   try {
     const output = require('child_process').execSync(
@@ -367,7 +434,6 @@ function killPythonBackend() {
       killProcessTree(Number(pid));
     }
   } catch (e) {
-    // netstat findstr returns exit code 1 when no match — that's fine
     console.log(`[Electron] No orphan process found on port ${PYTHON_PORT}`);
   }
 }
@@ -377,6 +443,8 @@ async function launch() {
   console.log(`[Electron] Packaged: ${app.isPackaged}`);
 
   createSplashWindow();
+
+  await startFrontendServer();
 
   const alreadyRunning = await checkHealth();
   if (alreadyRunning) {
@@ -398,11 +466,17 @@ async function launch() {
   });
 }
 
-// Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-  app.quit();
+  app.whenReady().then(() => {
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Notebook AI OS',
+      message: 'Notebook AI OS is already running.',
+      detail: 'The application is already open. Check your taskbar or system tray.',
+    }).then(() => app.quit());
+  });
 } else {
   app.on('second-instance', () => {
     if (mainWindow) {
@@ -416,6 +490,7 @@ if (!gotTheLock) {
 
 app.on('window-all-closed', () => {
   killPythonBackend();
+  stopFrontendServer();
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -423,6 +498,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   killPythonBackend();
+  stopFrontendServer();
   if (splashWindow && !splashWindow.isDestroyed()) {
     splashWindow.destroy();
     splashWindow = null;

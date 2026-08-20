@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     # One or more allowed browser origins. Accepts either a comma-separated
     # string (`http://localhost:5173,http://localhost:5174`) or a JSON list
     # (`["http://localhost:5173","http://localhost:5174"]`).
-    CORS_ORIGINS: str = "http://localhost:5173"
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:8200"
 
     @property
     def cors_origins(self) -> list[str]:

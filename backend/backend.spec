@@ -19,8 +19,6 @@ a = Analysis(
         (str(backend_root / '_templates'), '_templates'),
         # Skill definitions
         (str(backend_root / 'skills'), 'skills'),
-        # Environment file (if exists)
-        ('.env', '.'),
     ],
     hiddenimports=[
         # Uvicorn

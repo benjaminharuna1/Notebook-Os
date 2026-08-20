@@ -5,11 +5,11 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
+    "dev": "npm run build:frontend && electron .",
     "build:frontend": "cd ../frontend && npm run build",
     "build:backend": "cd ../backend && ../backend/.venv/Scripts/pyinstaller.exe backend.spec --clean --noconfirm",
     "build:electron": "npx electron-builder --win",
-    "build:all": "npm run build:frontend && npm run build:backend && npm run build:electron",
-    "dev": "concurrently \"cd ../backend && .venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8199 --reload\" \"cd ../frontend && npm run dev\" \"wait-on http://127.0.0.1:8199/health && electron .\""
+    "build:all": "npm run build:frontend && npm run build:backend && npm run build:electron"
   },
   "dependencies": {
     "app-builder-bin": "^5.0.0-alpha.10"
