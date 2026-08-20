@@ -43,6 +43,9 @@ export interface ModelDownload {
   downloaded_bytes: number;
   total_bytes: number;
   error: string | null;
+  custom?: boolean;
+  url?: string;
+  ram_estimate_gb?: number;
 }
 
 export interface ModelCatalog {

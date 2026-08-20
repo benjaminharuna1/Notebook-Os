@@ -1,3 +1,10 @@
+import json
+import os
+import re
+
+from app.core.config import settings
+from app.shared.logger import logger
+
 OLLAMA_RECOMMENDATIONS = {
     "low": ["llama3.2:1b", "qwen2.5:0.5b"],
     "medium": ["llama3.2:3b", "qwen2.5:3b"],
@@ -115,3 +122,130 @@ def get_recommendations(tier: str) -> dict:
         "embeddings": EMBEDDING_OPTIONS,
         "cloud": CLOUD_MODEL_PRESETS,
     }
+
+
+# ---------------------------------------------------------------------------
+# Custom model registry — user-added HuggingFace GGUF models
+# ---------------------------------------------------------------------------
+
+CUSTOM_MODELS_FILENAME = "custom_models.json"
+
+# RAM multiplier per quantization level (file_size × multiplier ≈ RAM needed)
+_QUANT_RAM_MULTIPLIERS = {
+    "q2": 0.8,
+    "q3": 1.0,
+    "q4": 1.2,
+    "q5": 1.5,
+    "q6": 1.8,
+    "q8": 2.0,
+    "f16": 3.0,
+    "fp16": 3.0,
+}
+
+
+def _custom_models_path() -> str:
+    return os.path.join(
+        os.path.abspath(settings.LOCAL_MODELS_DIR), CUSTOM_MODELS_FILENAME
+    )
+
+
+def load_custom_models() -> list[dict]:
+    path = _custom_models_path()
+    if not os.path.isfile(path):
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        logger.warning("Failed to load custom models from %s", path)
+        return []
+
+
+def save_custom_models(models: list[dict]):
+    path = _custom_models_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(models, f, indent=2)
+
+
+def register_custom_model(entry: dict):
+    models = load_custom_models()
+    key = entry["key"]
+    models = [m for m in models if m.get("key") != key]
+    models.append(entry)
+    save_custom_models(models)
+    logger.info("Registered custom model: %s", key)
+
+
+def remove_custom_model(key: str) -> bool:
+    models = load_custom_models()
+    before = len(models)
+    models = [m for m in models if m.get("key") != key]
+    if len(models) < before:
+        save_custom_models(models)
+        # Also remove the GGUF file from disk
+        for entry in models:
+            if entry.get("key") == key:
+                break
+        # Find the filename from the old list
+        old_models = [m for m in load_custom_models() if m.get("key") != key]
+        # Actually we need the filename from the removed entry
+        # Reload to find it
+        removed = [m for m in models if m.get("key") == key]
+        if removed:
+            filename = removed[0].get("filename", "")
+            filepath = os.path.join(
+                os.path.abspath(settings.LOCAL_MODELS_DIR), filename
+            )
+            if os.path.isfile(filepath):
+                try:
+                    os.remove(filepath)
+                except OSError:
+                    pass
+        logger.info("Removed custom model: %s", key)
+        return True
+    return False
+
+
+def parse_hf_url(url: str) -> dict | None:
+    """Parse a HuggingFace URL into repo and filename.
+
+    Supported formats:
+      https://huggingface.co/{owner}/{repo}/resolve/main/{filename}
+      https://huggingface.co/{owner}/{repo}/blob/main/{filename}
+    """
+    pattern = r"https?://huggingface\.co/([^/]+)/([^/]+)/(?:resolve|blob)/([^/]+)/(.+)"
+    m = re.match(pattern, url.strip())
+    if not m:
+        return None
+    owner, repo, _branch, filename = m.groups()
+    return {
+        "repo": f"{owner}/{repo}",
+        "filename": filename,
+        "url": url.strip(),
+    }
+
+
+def estimate_ram_gb(file_bytes: int, filename: str) -> float:
+    """Estimate RAM needed (GB) based on file size and quantization level."""
+    base_gb = file_bytes / (1024 ** 3)
+    lower = filename.lower()
+    for quant, mult in sorted(_QUANT_RAM_MULTIPLIERS.items(), key=lambda x: -len(x[0])):
+        if quant in lower:
+            return round(base_gb * mult, 1)
+    # Default multiplier if no quantization detected
+    return round(base_gb * 1.2, 1)
+
+
+def make_custom_model_key(filename: str) -> str:
+    """Generate a stable key from a GGUF filename."""
+    return f"custom_{filename}"
+
+
+def get_all_hf_models() -> dict:
+    """Return merged catalog + custom models as {key: entry} dict."""
+    merged = dict(HF_BY_KEY)
+    for entry in load_custom_models():
+        merged[entry["key"]] = entry
+    return merged

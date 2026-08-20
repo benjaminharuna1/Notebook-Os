@@ -24,3 +24,11 @@ export async function startModelDownload(key: string): Promise<{ status: string 
 export async function getModelDownloads(): Promise<{ downloads: ModelDownload[] }> {
   return api.get<{ downloads: ModelDownload[] }>('/models/hf/downloads');
 }
+
+export async function downloadCustomModel(url: string, name?: string): Promise<{ status: string }> {
+  return api.post<{ status: string }>('/models/hf/custom-download', { url, name });
+}
+
+export async function removeCustomModel(key: string): Promise<{ success: boolean }> {
+  return api.delete<{ success: boolean }>(`/models/hf/custom/${key}`);
+}

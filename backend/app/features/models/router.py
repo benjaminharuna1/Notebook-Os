@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends
 from starlette.concurrency import run_in_threadpool
 
 from app.core.dependencies import get_current_user, get_db
-from app.features.models.schemas import DownloadModelRequest, SwitchModelRequest
+from app.features.models.schemas import CustomDownloadRequest, DownloadModelRequest, SwitchModelRequest
 from app.features.models.service import ModelService
 from app.features.models import downloads as downloads_service
+from app.features.models.catalog import remove_custom_model
 
 router = APIRouter(tags=["models"])
 
@@ -65,3 +66,25 @@ async def local_status(
 ):
     service = ModelService(db)
     return await run_in_threadpool(service.get_local_status, current_user["id"])
+
+
+@router.post("/models/hf/custom-download")
+async def download_custom_hf_model(
+    req: CustomDownloadRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    return await run_in_threadpool(
+        downloads_service.start_custom_download, req.url, req.name
+    )
+
+
+@router.delete("/models/hf/custom/{key}")
+async def delete_custom_model(
+    key: str,
+    current_user: dict = Depends(get_current_user),
+):
+    removed = await run_in_threadpool(remove_custom_model, key)
+    if not removed:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Custom model not found")
+    return {"success": True}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { getSettings, updateSettings, getLocalStatus, getCatalog, startModelDownload, getModelDownloads } from '$lib/features/settings/api';
+  import { getSettings, updateSettings, getLocalStatus, getCatalog, startModelDownload, getModelDownloads, downloadCustomModel, removeCustomModel } from '$lib/features/settings/api';
   import type { LocalStatus, ModelCatalog, ModelDownload, UserSettings } from '$lib/features/settings/types';
   import Header from '$lib/core/components/layout/Header.svelte';
   import PasswordInput from '$lib/core/components/ui/PasswordInput.svelte';
@@ -16,6 +16,10 @@
 
   let llmSelection = $state('');
   let embeddingSelection = $state('');
+  let customUrl = $state('');
+  let customName = $state('');
+  let customDownloading = $state(false);
+  let customError = $state('');
 
   const chatOptions = $derived.by(() => {
     const opts: { id: string; name: string; group: string; provider: string }[] = [];
@@ -48,8 +52,17 @@
   });
 
   const chatDownloads = $derived.by(() =>
-    downloads.filter((d) => d.kind === 'chat' && !d.downloaded)
+    downloads.filter((d) => d.kind === 'chat' && !d.downloaded && !d.custom)
   );
+
+  const customModels = $derived.by(() =>
+    downloads.filter((d) => d.custom)
+  );
+
+  const parsedUrl = $derived.by(() => {
+    if (!customUrl.trim()) return null;
+    return parseHfUrl(customUrl.trim());
+  });
 
   const hasActiveDownload = $derived.by(() =>
     downloads.some((d) => d.status === 'downloading')
@@ -93,6 +106,40 @@
     } catch (e) {
       toasts.add((e as Error).message, 'error');
     }
+  }
+
+  async function downloadCustom() {
+    if (!customUrl.trim()) return;
+    customDownloading = true;
+    customError = '';
+    try {
+      await downloadCustomModel(customUrl.trim(), customName.trim() || undefined);
+      customUrl = '';
+      customName = '';
+      await refreshDownloads();
+      startPolling();
+      toasts.add('Custom model download started', 'success');
+    } catch (e) {
+      customError = (e as Error).message;
+    } finally {
+      customDownloading = false;
+    }
+  }
+
+  async function deleteCustom(key: string) {
+    try {
+      await removeCustomModel(key);
+      downloads = downloads.filter((d) => d.key !== key);
+      toasts.add('Custom model removed', 'success');
+    } catch (e) {
+      toasts.add((e as Error).message, 'error');
+    }
+  }
+
+  function parseHfUrl(url: string): { repo: string; filename: string } | null {
+    const match = url.match(/https?:\/\/huggingface\.co\/([^/]+)\/([^/]+)\/(?:resolve|blob)\/[^/]+\/(.+)/);
+    if (!match) return null;
+    return { repo: `${match[1]}/${match[2]}`, filename: match[3] };
   }
 
   function applyLlmSelection(id: string) {
@@ -310,6 +357,137 @@
           {#if localStatus && localStatus.ollama_models.length > 0}
             <p class="mt-3 text-xs text-slate-400">Installed Ollama models: {localStatus.ollama_models.join(', ')}</p>
           {/if}
+        </section>
+
+        <section>
+          <h2 class="mb-3 text-lg font-semibold text-slate-800">Add Custom Model from HuggingFace</h2>
+          <p class="mb-4 text-xs text-slate-400">
+            Paste a HuggingFace URL to download any GGUF model. Works on any PC with enough RAM — no GPU required.
+          </p>
+          <div class="space-y-3">
+            <div>
+              <label class="mb-1 block text-sm font-medium text-slate-700">HuggingFace URL</label>
+              <input
+                type="url"
+                bind:value={customUrl}
+                placeholder="https://huggingface.co/owner/repo/resolve/main/model.gguf"
+                class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm"
+              />
+              {#if parsedUrl}
+                <p class="mt-1 text-xs text-slate-500">
+                  Repo: <span class="font-medium">{parsedUrl.repo}</span> · File: <span class="font-medium">{parsedUrl.filename}</span>
+                </p>
+              {/if}
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium text-slate-700">Display Name (optional)</label>
+              <input
+                type="text"
+                bind:value={customName}
+                placeholder="e.g. Mistral 7B Q4"
+                class="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm"
+              />
+            </div>
+            <button
+              type="button"
+              onclick={downloadCustom}
+              disabled={!customUrl.trim() || customDownloading || !parsedUrl}
+              class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {customDownloading ? 'Starting download...' : 'Download Custom Model'}
+            </button>
+            {#if customError}
+              <p class="text-xs text-red-500">{customError}</p>
+            {/if}
+          </div>
+        </section>
+
+        {#if customModels.length > 0}
+          <section>
+            <h2 class="mb-3 text-lg font-semibold text-slate-800">Custom Models</h2>
+            <div class="space-y-3">
+              {#each customModels as cm}
+                <div class="rounded-lg border border-slate-200 p-4">
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0 flex-1">
+                      <p class="text-sm font-medium text-slate-800">{cm.name}</p>
+                      <p class="text-xs text-slate-400">
+                        {cm.size_label || 'Size unknown'}
+                        {#if cm.ram_estimate_gb}
+                          · Est. RAM: ~{cm.ram_estimate_gb} GB
+                        {/if}
+                      </p>
+                      {#if cm.url}
+                        <p class="mt-0.5 truncate text-[11px] text-slate-400">{cm.url}</p>
+                      {/if}
+                    </div>
+                    <div class="flex items-center gap-2">
+                      {#if cm.downloaded}
+                        <span class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Installed</span>
+                      {:else if cm.status === 'downloading'}
+                        <span class="text-xs text-indigo-600">{cm.progress}%</span>
+                      {:else}
+                        <button
+                          type="button"
+                          onclick={() => download(cm.key)}
+                          class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+                        >
+                          Download
+                        </button>
+                      {/if}
+                      <button
+                        type="button"
+                        onclick={() => deleteCustom(cm.key)}
+                        class="rounded px-2 py-1 text-xs text-slate-400 hover:text-red-500"
+                        title="Remove model"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                  {#if cm.status === 'downloading'}
+                    <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                      <div class="h-full rounded-full bg-indigo-600 transition-all" style="width: {cm.progress}%"></div>
+                    </div>
+                    <p class="mt-1 text-xs text-slate-400">
+                      {formatBytes(cm.downloaded_bytes)} / {formatBytes(cm.total_bytes)}
+                    </p>
+                  {/if}
+                  {#if cm.status === 'error'}
+                    <p class="mt-2 text-xs text-red-500">Download failed: {cm.error}</p>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          </section>
+        {/if}
+
+        <section class="rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <h2 class="mb-2 text-lg font-semibold text-amber-800">Hardware Guide</h2>
+          <p class="mb-3 text-xs text-amber-700">
+            These models run on your CPU — no graphics card needed. Pick the right quantization level for your RAM.
+          </p>
+          <div class="space-y-2 text-xs text-amber-700">
+            <div class="flex gap-3">
+              <span class="w-16 font-medium">4 GB RAM</span>
+              <span>Use Q2/Q3 quantized models under ~1.5 GB. Good for light tasks.</span>
+            </div>
+            <div class="flex gap-3">
+              <span class="w-16 font-medium">8 GB RAM</span>
+              <span>Use Q4/Q3 models up to ~4 GB. Solid for daily research use.</span>
+            </div>
+            <div class="flex gap-3">
+              <span class="w-16 font-medium">16 GB RAM</span>
+              <span>Use Q4/Q5 models up to ~8 GB. Best balance of speed and quality.</span>
+            </div>
+            <div class="flex gap-3">
+              <span class="w-16 font-medium">32 GB+</span>
+              <span>Use any model up to ~15 GB. Full quality with Q6/Q8/F16.</span>
+            </div>
+          </div>
+          <p class="mt-3 text-[11px] text-amber-600">
+            Tip: Q4 quantized models are the sweet spot for most users — good quality at half the RAM of full precision.
+          </p>
         </section>
 
         <section>

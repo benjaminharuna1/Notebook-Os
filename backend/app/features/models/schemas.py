@@ -18,3 +18,8 @@ class SwitchModelRequest(BaseModel):
 
 class DownloadModelRequest(BaseModel):
     key: str
+
+
+class CustomDownloadRequest(BaseModel):
+    url: str
+    name: Optional[str] = None
