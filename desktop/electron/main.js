@@ -145,7 +145,7 @@ function startPythonBackend() {
 
   const frontendPath = app.isPackaged
     ? path.join(process.resourcesPath, 'frontend', 'build')
-    : '';
+    : path.join(__dirname, '..', '..', 'frontend', 'build');
 
   const env = {
     ...process.env,
@@ -177,6 +177,7 @@ function startPythonBackend() {
       '--reload',
     ], {
       cwd: backendCwd,
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   }
@@ -234,17 +235,7 @@ function checkHealth() {
   });
 }
 
-function waitForServer(callback, retries = HEALTH_CHECK_RETRIES) {
-  if (serverReady) {
-    callback();
-    return;
-  }
-  if (waitingForServer) {
-    console.log('[Electron] Already waiting for server, skipping duplicate call');
-    return;
-  }
-  waitingForServer = true;
-
+function pollServer(callback, retries) {
   const req = http.get(HEALTH_CHECK_URL, { timeout: 2000 }, (res) => {
     if (res.statusCode === 200 && !serverReady) {
       res.resume();
@@ -254,7 +245,7 @@ function waitForServer(callback, retries = HEALTH_CHECK_RETRIES) {
       callback();
     } else if (retries > 0) {
       res.resume();
-      setTimeout(() => waitForServer(callback, retries - 1), HEALTH_CHECK_DELAY);
+      setTimeout(() => pollServer(callback, retries - 1), HEALTH_CHECK_DELAY);
     } else if (!serverReady) {
       res.resume();
       waitingForServer = false;
@@ -267,7 +258,7 @@ function waitForServer(callback, retries = HEALTH_CHECK_RETRIES) {
 
   req.on('error', () => {
     if (retries > 0 && !serverReady) {
-      setTimeout(() => waitForServer(callback, retries - 1), HEALTH_CHECK_DELAY);
+      setTimeout(() => pollServer(callback, retries - 1), HEALTH_CHECK_DELAY);
     } else if (!serverReady) {
       waitingForServer = false;
       showErrorAndQuit(
@@ -280,7 +271,7 @@ function waitForServer(callback, retries = HEALTH_CHECK_RETRIES) {
   req.on('timeout', () => {
     req.destroy();
     if (retries > 0 && !serverReady) {
-      setTimeout(() => waitForServer(callback, retries - 1), HEALTH_CHECK_DELAY);
+      setTimeout(() => pollServer(callback, retries - 1), HEALTH_CHECK_DELAY);
     } else if (!serverReady) {
       waitingForServer = false;
       showErrorAndQuit(
@@ -289,6 +280,18 @@ function waitForServer(callback, retries = HEALTH_CHECK_RETRIES) {
       );
     }
   });
+}
+
+function waitForServer(callback) {
+  if (serverReady) {
+    callback();
+    return;
+  }
+  if (waitingForServer) {
+    return;
+  }
+  waitingForServer = true;
+  pollServer(callback, HEALTH_CHECK_RETRIES);
 }
 
 function createWindow() {
@@ -379,19 +382,19 @@ async function launch() {
   if (alreadyRunning) {
     console.log('[Electron] Backend already running, reusing');
     serverReady = true;
+    createWindow();
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close();
     }
-    createWindow();
     return;
   }
 
   startPythonBackend();
   waitForServer(() => {
+    createWindow();
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close();
     }
-    createWindow();
   });
 }
 
