@@ -10,6 +10,8 @@
 
   let { sessionId: urlSessionId, projectId }: { sessionId?: string; projectId?: string } = $props();
 
+  type streamOptions = { regenerate?: boolean; slashCommand?: string };
+
   let sessionId = $state<string | null>(null);
   let abortFn = $state<(() => void) | null>(null);
   let selectedDocIds = $state<Set<string>>(new Set());
@@ -80,16 +82,8 @@
   }
 
   // --- shared streaming logic ---
-  function startStreaming(
-    userText: string,
-    slashCommand?: string,
-    options?: { regenerate?: boolean },
-  ) {
+  function beginAssistantStream(userText: string, options?: streamOptions) {
     streaming.set(true);
-    const mergedOptions = {
-      ...options,
-      ...(slashCommand ? { slashCommand } : {}),
-    };
 
     const assistantMsg: ChatMessageType = {
       id: crypto.randomUUID(),
@@ -117,6 +111,16 @@
           return m;
         });
       },
+      (sid) => {
+        streaming.set(false);
+        abortFn = null;
+        if (sid) {
+          if (!sessionId) sessionId = sid;
+          const path = projectId ? `/projects/${projectId}/chat/${sid}` : `/chat/${sid}`;
+          if (urlSessionId !== sid) goto(path);
+        }
+      },
+      failAssistant,
       (sources: SourceChunk[]) => {
         messages.update((m) => {
           const last = m[m.length - 1];
@@ -126,26 +130,7 @@
           return m;
         });
       },
-      (sid) => {
-        streaming.set(false);
-        abortFn = null;
-        // Fetch model_used from the last assistant message we just populated
-        messages.update((m) => {
-          const last = m[m.length - 1];
-          if (last && last.id === assistantId) {
-            // model_used is injected server-side on persist; we won't have it
-            // on the live SSE message, but it shows on reload from DB.
-          }
-          return m;
-        });
-        if (sid) {
-          if (!sessionId) sessionId = sid;
-          const path = projectId ? `/projects/${projectId}/chat/${sid}` : `/chat/${sid}`;
-          if (urlSessionId !== sid) goto(path);
-        }
-      },
-      failAssistant,
-      mergedOptions,
+      options,
     );
   }
 
@@ -158,7 +143,10 @@
       content: text,
     };
     messages.update((m) => [...m, userMsg]);
-    startStreaming(text, slashCommand);
+    const mergedOptions: streamOptions = {
+      ...(slashCommand ? { slashCommand } : {}),
+    };
+    beginAssistantStream(text, mergedOptions);
   }
 
   function handleEditMessage(messageId: string, newContent: string) {
@@ -176,7 +164,7 @@
       content: newContent,
     };
     messages.update((m) => [...m, userMsg]);
-    startStreaming(newContent);
+    beginAssistantStream(newContent);
   }
 
   function handleRegenerate(messageId: string) {
@@ -204,56 +192,7 @@
       toasts.add('Cannot regenerate: no user message found', 'error');
       return;
     }
-    // Resend with regenerate flag
-    streaming.set(true);
-
-    const assistantMsg: ChatMessageType = {
-      id: crypto.randomUUID(),
-      session_id: sessionId || '',
-      role: 'assistant',
-      content: '',
-    };
-    messages.update((m) => [...m, assistantMsg]);
-    const assistantId = assistantMsg.id;
-
-    const docIds = selectedDocIds.size > 0 ? [...selectedDocIds] : undefined;
-
-    abortFn = streamChat(
-      sessionId || undefined,
-      userText,
-      projectId,
-      docIds,
-      (chunk) => {
-        if (chunk == null) return;
-        messages.update((m) => {
-          const last = m[m.length - 1];
-          if (last && last.id === assistantId) {
-            last.content += chunk;
-          }
-          return m;
-        });
-      },
-      (sources: SourceChunk[]) => {
-        messages.update((m) => {
-          const last = m[m.length - 1];
-          if (last && last.id === assistantId) {
-            last.sources = sources;
-          }
-          return m;
-        });
-      },
-      (sid) => {
-        streaming.set(false);
-        abortFn = null;
-        if (sid) {
-          if (!sessionId) sessionId = sid;
-          const path = projectId ? `/projects/${projectId}/chat/${sid}` : `/chat/${sid}`;
-          if (urlSessionId !== sid) goto(path);
-        }
-      },
-      failAssistant,
-      { regenerate: true },
-    );
+    beginAssistantStream(userText, { regenerate: true });
   }
 
   // --- Feature 10: Error retry ---

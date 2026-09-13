@@ -389,7 +389,7 @@ class ChatService:
 
         model = self.model_service.get_active_model(user_id)
         skills_svc = SkillsService(self.db)
-        skill_instructions = skills_svc.detectrelevant_skills(user_id, effective_message)
+        skill_instructions = skills_svc.detect_relevant_skills(user_id, effective_message)
         cluster_ctx = self._cluster_context(project_id)
 
         # Fix 6: Union user-selected doc_ids with search-matched doc_ids
@@ -406,7 +406,7 @@ class ChatService:
             for row in self.db.execute(
                 f"SELECT id, apa_reference FROM documents WHERE id IN ({ph})", doc_ids_for_refs
             ).fetchall():
-                if row["apareference"]:
+                if row["apa_reference"]:
                     apa_map[row["id"]] = row["apa_reference"]
 
         # Deduplicated APA references in order of first appearance
