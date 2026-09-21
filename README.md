@@ -30,8 +30,12 @@ uv venv
 .venv\Scripts\activate.bat
 uv pip install -r requirements.txt
 cp .env.example .env
-uv run uvicorn app.main:app --reload
+python -m uvicorn app.main:app --reload
 ```
+
+> Run uvicorn with `python -m uvicorn`, not the `uvicorn` console script. The
+> generated `uvicorn.exe` is a uv trampoline that can fail with
+> `failed to canonicalize script path` if the venv is not where it was created.
 
 ### Download the local models (first run only)
 Place two GGUF files in `backend/models/` (the app expects them there by default):
