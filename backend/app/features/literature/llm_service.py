@@ -3,6 +3,7 @@ import json
 import re
 from typing import List, Optional, Tuple
 
+from app.core import citations
 from app.features.literature.metadata import title_case
 from app.features.models.service import ModelService
 
@@ -449,8 +450,8 @@ class LiteratureLLMService:
             return
         if overwrite:
             merged = {key: (fields.get(key) or None) for key in ENTRY_KEYS}
-            merged["citation"] = service.auto_citation(paper)
-            merged["apa_reference"] = paper.get("apa_reference") or service.apa_reference(paper)
+            merged["citation"] = citations.auto_citation(paper)
+            merged["apa_reference"] = paper.get("apa_reference") or citations.apa_reference(paper)
             service.upsert_entry(
                 paper["id"], user_id, project_id, merged, auto=False, auto_generated=True
             )

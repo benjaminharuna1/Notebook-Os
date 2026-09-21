@@ -30,7 +30,7 @@ import requests
 
 CROSSREF_WORKS_URL = "https://api.crossref.org/works"
 OPENALEX_WORKS_URL = "https://api.openalex.org/works"
-MAILTO = "notebook-os@localhost"
+MAILTO = "nara@localhost"
 HTTP_TIMEOUT = 8.0
 MAX_CANDIDATES = 6
 

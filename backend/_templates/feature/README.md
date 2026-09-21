@@ -1,6 +1,6 @@
 # Feature Template
 
-Use this skeleton to create new features for Notebook AI OS.
+Use this skeleton to create new features for NARA.
 
 ## How to use
 

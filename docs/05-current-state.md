@@ -1,6 +1,6 @@
 # Current State & Design Decisions
 
-## Implemented Features (15 backend / 12 frontend)
+## Implemented Features (16 backend / 13 frontend)
 
 | # | Feature | Backend | Frontend | Description |
 |---|---------|---------|----------|-------------|
@@ -13,12 +13,13 @@
 | 7 | **Search** | `features/search/` | `features/search/` | Semantic + keyword merge search |
 | 8 | **Chat** | `features/chat/` | `features/chat/` | RAG chat with SSE streaming, auto-learn, project memory |
 | 9 | **Graph** | `features/graph/` | `features/graph/` | Knowledge graph with checkpoints, themes, tracked concepts |
-| 10 | **Literature** | `features/literature/` | `features/literature/` | Literature mapping, metadata enrichment, XLSX/DOCX export |
+| 10 | **Literature** | `features/literature/` | `features/literature/` | Literature mapping, metadata enrichment, APA formatting |
 | 11 | **Models** | `features/models/` | `features/models/` | Ollama, local GGUF, OpenAI, Anthropic, Google providers |
 | 12 | **Skills** | `features/skills/` | `features/skills/` | 8 installable AI skill definitions, keyword detection |
 | 13 | **Settings** | `features/settings/` | `features/settings/` | Per-user preferences, device tier, encrypted API keys |
 | 14 | **Actions** | `features/actions/` | `features/actions/` | Background job registry with pause/resume |
 | 15 | — | — | `features/documents/` | *(Processing & embedding are backend-only pipeline stages)* |
+| 16 | **Export** | `features/export/` | `features/export/` | Snapshot-based XLSX workbook + DOCX dossier, honest about missing data |
 
 ## Key Technology Choices
 
@@ -57,10 +58,10 @@
 
 ### Test Suite
 
-- **175 tests** across all features
+- **183 tests** across all features
 - Run: `cd backend && .venv\Scripts\python.exe -m pytest -q`
 - Tests are co-located in each feature's `tests/` directory
-- Coverage: auth, projects, ingestion, processing, embedding, documents, search, chat, graph (6 test files), literature (3 test files), models, skills, settings, actions
+- Coverage: auth, projects, ingestion, processing, embedding, documents, search, chat, graph (6 test files), literature (3 test files), export, models, skills, settings, actions
 
 ### Acceptance Criteria
 
@@ -72,7 +73,9 @@
 - [x] Chat auto-learned insights persist in project_memory table
 - [x] Graph builds with checkpoints, themes, and tracked concepts
 - [x] Literature mapping produces entries with metadata enrichment (Crossref/OpenAlex/LLM)
-- [x] XLSX and DOCX exports work for literature mapping
+- [x] Export builds an XLSX workbook and a DOCX dossier from one snapshot; missing metadata and
+      deleted-document citations are marked rather than fabricated or dropped
+- [x] A project with no papers is refused with an explanation instead of an empty file
 - [x] Skills install, enable, and inject instructions into chat prompts
 - [x] All services start cleanly with `docker-compose up`
 

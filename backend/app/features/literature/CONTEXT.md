@@ -19,9 +19,10 @@ One job: build a literature map connecting papers via citation + similarity edge
 2. **Enrich metadata** — DOI extraction → Crossref/OpenAlex lookup → LLM fallback → unverified
 3. **Entries** — editable literature rows (citation, objective, methodology, findings, limitations, relevance, APA)
 4. **Community detection** — greedy modularity clustering of paper nodes
-5. **Export** — XLSX workbook or DOCX references list
-6. **Summaries** — SSE-streamed LLM summaries for clusters and individual papers
-7. **Regenerate** — re-run enrichment for selected or all papers
+5. **Summaries** — SSE-streamed LLM summaries for clusters and individual papers
+6. **Regenerate** — re-run enrichment for selected or all papers
+
+Exporting is owned by the `export` feature.
 
 ## Outputs
 
@@ -30,8 +31,6 @@ One job: build a literature map connecting papers via citation + similarity edge
 | LiteratureMapResponse | `{nodes: [PaperNode], edges: [PaperEdge], clusters}` | Paper graph |
 | LiteratureEntry | `{paper_id, citation, research_objective, methodology, ...}` | Editable entry |
 | Metadata | `{title, authors, year, doi, abstract, verification_status, candidates}` | Paper metadata |
-| XLSX export | Binary | Literature mapping workbook |
-| DOCX export | Binary | APA references list |
 | Summary | SSE stream | LLM-generated paper/cluster overview |
 
 ## Key files
@@ -39,7 +38,7 @@ One job: build a literature map connecting papers via citation + similarity edge
 | File | Purpose |
 |---|---|
 | `router.py` | REST + SSE endpoints for literature mapping |
-| `service.py` | LiteratureService: map build, enrichment, entries, export, APA |
+| `service.py` | LiteratureService: map build, enrichment, entries, APA |
 | `llm_service.py` | LiteratureLLMService: metadata extraction, summaries |
 | `metadata.py` | Crossref/OpenAlex lookup, DOI extraction, title heuristics |
 | `jobs.py` | Background literature map builds via actions registry |

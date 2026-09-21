@@ -32,6 +32,7 @@ def create_app() -> FastAPI:
     from app.features.models.router import router as models_router
     from app.features.graph.router import router as graph_router
     from app.features.literature.router import router as literature_router
+    from app.features.export.router import router as export_router
     from app.features.skills.router import router as skills_router
     from app.features.projects.router import router as projects_router
     from app.features.actions.router import router as actions_router
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(models_router, prefix="/api/v1")
     app.include_router(graph_router, prefix="/api/v1")
     app.include_router(literature_router, prefix="/api/v1")
+    app.include_router(export_router, prefix="/api/v1")
     app.include_router(skills_router, prefix="/api/v1")
     app.include_router(projects_router, prefix="/api/v1")
     app.include_router(actions_router, prefix="/api/v1")
@@ -66,6 +68,6 @@ if __name__ == "__main__":
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8199"))
 
-    print(f"Starting Notebook AI OS backend on {host}:{port}")
+    print(f"Starting NARA backend on {host}:{port}")
     uvicorn.run(app, host=host, port=port)
 

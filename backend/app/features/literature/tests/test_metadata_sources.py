@@ -528,7 +528,7 @@ def test_apply_candidate_rejects_out_of_range(tmp_path):
     assert service.apply_candidate("p1", "u1", "proj1", 0) is None
 
 
-# --- regenerate + docx export -----------------------------------------------
+# --- regenerate --------------------------------------------------------------
 
 
 def _fake_enrich(paper, user_id=None):
@@ -589,74 +589,3 @@ def test_regenerate_metadata_tolerates_paper_failures(tmp_path):
         results = service.regenerate_metadata("u1", "proj1")
 
     assert results == [{"paper_id": "p1", "status": "error"}]
-
-
-def test_export_references_docx_builds_word_document(tmp_path):
-    from io import BytesIO
-
-    from docx import Document
-
-    db = _db()
-    db.execute(
-        """INSERT INTO documents (id, user_id, project_id, title, filename, file_path, file_type,
-                                 apa_reference)
-           VALUES ('p1', 'u1', 'proj1', 'Alpha', 'a.pdf', ?, 'pdf', 'Alpha, A. (2020). From doc.')""",
-        (str(tmp_path / "a.pdf"),),
-    )
-    db.execute(
-        """INSERT INTO documents (id, user_id, project_id, title, filename, file_path, file_type,
-                                 apa_reference)
-           VALUES ('p2', 'u1', 'proj1', 'Beta', 'b.pdf', ?, 'pdf', 'Beta, B. (2021). Second paper.')""",
-        (str(tmp_path / "b.pdf"),),
-    )
-    db.execute(
-        """INSERT INTO documents (id, user_id, project_id, title, filename, file_path, file_type,
-                                 authors, year)
-           VALUES ('p3', 'u1', 'proj1', 'Third Paper', 'c.pdf', ?, 'pdf', '["Gamma, G"]', 2022)""",
-        (str(tmp_path / "c.pdf"),),
-    )
-    db.execute(
-        """INSERT INTO literature_entries (paper_id, user_id, project_id, citation, apa_reference)
-           VALUES ('p1', 'u1', 'proj1', 'Alpha, 2020', 'Alpha, A. (2020). From entry.')"""
-    )
-    db.commit()
-    service = LiteratureService(db)
-
-    data = service.export_references_docx("u1", "proj1", "My Project")
-
-    assert data.startswith(b"PK")
-    document = Document(BytesIO(data))
-    texts = [p.text for p in document.paragraphs]
-    assert texts[0] == "My Project"
-    assert document.paragraphs[0].style.name == "Title"
-    assert texts[1] == "References"
-    assert document.paragraphs[1].style.name == "Heading 1"
-    refs = texts[2:]
-    assert refs == [
-        "Alpha, A. (2020). From doc.",
-        "Beta, B. (2021). Second paper.",
-        "Gamma, G (2022). Third Paper.",
-    ]
-
-
-def test_export_references_docx_deduplicates_and_sorts(tmp_path):
-    from io import BytesIO
-
-    from docx import Document
-
-    db = _db()
-    for i, pid in enumerate(["p1", "p2"]):
-        db.execute(
-            """INSERT INTO documents (id, user_id, project_id, title, filename, file_path, file_type,
-                                     apa_reference)
-               VALUES (?, 'u1', 'proj1', ?, ?, ?, 'pdf', 'Same, S. (2021). Duplicate reference.')""",
-            (pid, f"Paper {i}", f"{pid}.pdf", str(tmp_path / f"{pid}.pdf")),
-        )
-    db.commit()
-    service = LiteratureService(db)
-
-    data = service.export_references_docx("u1", "proj1", "Proj")
-
-    document = Document(BytesIO(data))
-    refs = [p.text for p in document.paragraphs][2:]
-    assert refs == ["Same, S. (2021). Duplicate reference."]

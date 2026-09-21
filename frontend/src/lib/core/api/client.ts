@@ -46,6 +46,42 @@ async function request<T>(endpoint: string, options: FetchOptions = {}): Promise
   return response.json();
 }
 
+export async function downloadFile(endpoint: string): Promise<string> {
+  const authToken = get(token);
+  const response = await fetch(`${BASE_URL}${endpoint}`, {
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+    credentials: 'include',
+  });
+
+  if (response.status === 401) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth/login';
+    }
+    throw new Error('Unauthorized');
+  }
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(err.detail || `Download failed: ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const match = disposition.match(/filename="?([^";]+)"?/);
+  const filename = match?.[1] ?? 'download';
+
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+
+  return filename;
+}
+
 export function createSSEConnection(
   endpoint: string,
   body: unknown,

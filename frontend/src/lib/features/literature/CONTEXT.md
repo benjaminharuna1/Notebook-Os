@@ -4,7 +4,7 @@ Literature mapping — build, browse, export structured paper metadata.
 
 ## What it does
 
-Manages the literature mapping workflow: build literature maps from documents, browse per-paper entries (objective, methodology, findings, limitations), edit metadata, export to Excel/DOCX, stream summaries for clusters and papers.
+Manages the literature mapping workflow: build literature maps from documents, browse per-paper entries (objective, methodology, findings, limitations), edit metadata, stream summaries for clusters and papers. Exporting is owned by the `export` feature.
 
 ## API endpoints called
 
@@ -21,8 +21,6 @@ Manages the literature mapping workflow: build literature maps from documents, b
 | `/projects/{id}/literature/entries/{paperId}/candidates/apply` | POST | Apply metadata candidate |
 | `/projects/{id}/literature/entries/{paperId}/summarize` | POST (SSE) | Stream paper summary |
 | `/projects/{id}/literature/clusters/summary` | POST (SSE) | Stream cluster summary |
-| `/projects/{id}/literature/export` | GET | Export literature map (xlsx) |
-| `/projects/{id}/literature/references/export.docx` | GET | Export references (docx) |
 | `/projects/{id}/literature/regenerate` | POST | Batch regenerate metadata |
 | `/projects/{id}/literature/status` | GET | Check readiness (model + network) |
 | `/search` | POST | Search papers for linking |
@@ -35,7 +33,7 @@ No dedicated store — relies on route-level data loading and local component st
 ## Special patterns
 
 - **SSE streaming**: `streamClusterSummary()` and `streamPaperSummary()` for LLM-generated summaries
-- **File downloads**: `exportLiteratureMap()` and `exportReferencesDocx()` trigger browser downloads via blob URLs
+- **Exports**: the literature page's export button calls `exportWorkbook()` from `$lib/features/export/api`
 - **PDF viewer**: `getDocumentFileUrl()` fetches PDF as blob for inline viewing
 - **Type reuse**: Imports `GraphNode`, `GraphEdge`, `LiteratureEntry` from `graph/types.ts`
 - **Metadata candidates**: External metadata sources suggested with confidence scores — user picks one

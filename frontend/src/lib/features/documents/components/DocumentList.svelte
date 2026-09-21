@@ -3,7 +3,6 @@
   import { listDocuments, deleteDocuments, findOrphans, cleanOrphans } from '../api';
   import { pauseIngestion, resumeIngestion, reprocessIngestion, reprocessDocuments } from '$lib/features/ingestion/api';
   import {
-    exportReferencesDocx,
     getLiteratureEntry,
     getLiteratureJob,
     getLiteratureStatus,
@@ -16,6 +15,7 @@
     type LiteratureEntry,
   } from '$lib/features/literature/api';
   import type { LiteratureMetadata, MetadataCandidate } from '$lib/features/literature/api';
+  import { exportDossier } from '$lib/features/export/api';
   import { searchPapers } from '$lib/features/literature/api';
   import type { SearchResult } from '$lib/features/search/types';
   import type { Document } from '../types';
@@ -375,7 +375,7 @@
     exporting = true;
     clearActionFeedback();
     try {
-      await exportReferencesDocx(projectId);
+      await exportDossier(projectId);
     } catch (e) {
       actionError = e instanceof Error ? e.message : String(e ?? 'Export failed');
     } finally {
@@ -588,7 +588,7 @@
         disabled={exporting}
         class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
       >
-        {exporting ? 'Exporting…' : '⬇ Export APA references (.docx)'}
+        {exporting ? 'Exporting…' : '⬇ Export project dossier (.docx)'}
       </button>
     </div>
   </div>

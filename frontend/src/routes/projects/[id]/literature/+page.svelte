@@ -6,7 +6,6 @@
   import type { LiteratureEntry, LiteratureMapResponse } from '$lib/features/graph/types';
   import {
     applyPaperCandidate,
-    exportLiteratureMap,
     getLiteratureEntries,
     getLiteratureMap,
     getLiteratureStatus,
@@ -17,6 +16,7 @@
     updatePaperMetadata,
   } from '$lib/features/literature/api';
   import type { LiteratureMetadata, MetadataCandidate } from '$lib/features/literature/api';
+  import { exportWorkbook } from '$lib/features/export/api';
   import {
     actions as actionList,
     pauseAction,
@@ -239,7 +239,7 @@
     if (!projectId || exporting) return;
     exporting = true;
     try {
-      await exportLiteratureMap(projectId);
+      await exportWorkbook(projectId);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e ?? 'Export failed');
     } finally {

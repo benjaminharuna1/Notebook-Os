@@ -13,6 +13,7 @@ backend/
 │   │   ├── security.py                # Auth helpers (JWT, password hashing)
 │   │   ├── events.py                  # App startup/shutdown lifecycle hooks
 │   │   ├── exceptions.py              # Global exception handlers (AppException)
+│   │   ├── citations.py               # Shared in-text citation + APA 7th reference formatting
 │   │   └── ratelimit.py               # Per-IP rate limiting
 │   │
 │   ├── shared/                        # Reusable utilities, no business logic
@@ -22,7 +23,7 @@ backend/
 │   │   ├── text_utils.py              # Text cleaning, normalisation
 │   │   └── id_utils.py               # UUID generation helpers
 │   │
-│   └── features/                      # ← FEATURE-BASED MODULES (15 features)
+│   └── features/                      # ← FEATURE-BASED MODULES (16 features)
 │       │
 │       ├── auth/                      # Feature: user authentication (JWT + cookies)
 │       │   ├── __init__.py
@@ -129,7 +130,7 @@ backend/
 │       │
 │       ├── literature/                # Feature: paper-level literature mapping
 │       │   ├── __init__.py
-│       │   ├── router.py              # Literature map, entries, metadata, export, summaries
+│       │   ├── router.py              # Literature map, entries, metadata, summaries
 │       │   ├── service.py             # LiteratureService: map build, enrichment, entries, APA
 │       │   ├── llm_service.py         # LiteratureLLMService: metadata extraction, summaries
 │       │   ├── metadata.py            # Crossref/OpenAlex lookup, DOI extraction
@@ -139,6 +140,15 @@ backend/
 │       │       ├── test_literature.py
 │       │       ├── test_literature_entries.py
 │       │       └── test_metadata_sources.py
+│       │
+│       ├── export/                    # Feature: project export artifacts
+│       │   ├── __init__.py
+│       │   ├── router.py              # GET /projects/{id}/export/workbook, /export/dossier
+│       │   ├── snapshot.py            # Snapshot assembly + missing-data honesty rules
+│       │   ├── workbook.py            # XLSX renderer (openpyxl)
+│       │   ├── dossier.py             # DOCX renderer (python-docx)
+│       │   └── tests/
+│       │       └── test_export.py
 │       │
 │       ├── models/                    # Feature: LLM provider management
 │       │   ├── __init__.py

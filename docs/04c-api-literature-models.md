@@ -24,12 +24,19 @@ POST /api/v1/projects/{project_id}/literature/entries/{paper_id}/candidates/appl
 
 POST /api/v1/projects/{project_id}/literature/regenerate
 POST /api/v1/projects/{project_id}/literature/clusters/summary
+```
 
-GET /api/v1/projects/{project_id}/literature/export
-  Response: XLSX binary download
+## Export
 
-GET /api/v1/projects/{project_id}/literature/references/export.docx
-  Response: DOCX binary download (APA references list)
+```
+GET /api/v1/projects/{project_id}/export/workbook
+  Response: XLSX binary download (literature workbook, with metadata provenance)
+
+GET /api/v1/projects/{project_id}/export/dossier
+  Query: include_answers? (bool, default false)
+  Response: DOCX binary download (references, paper notes, optional saved answers)
+
+Both respond with 400 when the project has no papers to export.
 ```
 
 ## Models

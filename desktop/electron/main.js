@@ -28,7 +28,7 @@ function getDataDir() {
 
 function getBackendPath() {
   if (app.isPackaged) {
-    const exeName = process.platform === 'win32' ? 'notebook-backend.exe' : 'notebook-backend';
+    const exeName = process.platform === 'win32' ? 'nara-backend.exe' : 'nara-backend';
     return path.join(process.resourcesPath, 'backend', exeName);
   }
   const pythonName = process.platform === 'win32' ? 'python.exe' : 'python3';
@@ -171,7 +171,7 @@ function createSplashWindow() {
 </style></head>
 <body>
   <div class="card">
-    <h1>Notebook AI OS</h1>
+    <h1>NARA</h1>
     <p>Starting backend server...</p>
     <div class="spinner"></div>
   </div>
@@ -208,7 +208,7 @@ function startPythonBackend() {
   if (!fs.existsSync(backendPath)) {
     showErrorAndQuit(
       'Backend not found',
-      `Could not find notebook-backend at:\n${backendPath}\n\nThe application may need to be reinstalled.`
+      `Could not find nara-backend at:\n${backendPath}\n\nThe application may need to be reinstalled.`
     );
     return;
   }
@@ -258,7 +258,7 @@ function startPythonBackend() {
   pythonProcess.on('error', (err) => {
     showErrorAndQuit(
       'Failed to start backend',
-      `Could not launch notebook-backend.exe:\n${err.message}\n\n${backend_stderr || 'No additional error output.'}`
+      `Could not launch nara-backend.exe:\n${err.message}\n\n${backend_stderr || 'No additional error output.'}`
     );
   });
 
@@ -370,7 +370,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 768,
-    title: 'Notebook AI OS',
+    title: 'NARA',
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -439,7 +439,7 @@ function killPythonBackend() {
 }
 
 async function launch() {
-  console.log('[Electron] Starting Notebook AI OS...');
+  console.log('[Electron] Starting NARA...');
   console.log(`[Electron] Packaged: ${app.isPackaged}`);
 
   createSplashWindow();
@@ -472,8 +472,8 @@ if (!gotTheLock) {
   app.whenReady().then(() => {
     dialog.showMessageBox({
       type: 'info',
-      title: 'Notebook AI OS',
-      message: 'Notebook AI OS is already running.',
+      title: 'NARA',
+      message: 'NARA is already running.',
       detail: 'The application is already open. Check your taskbar or system tray.',
     }).then(() => app.quit());
   });

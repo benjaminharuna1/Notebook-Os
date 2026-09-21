@@ -1,6 +1,6 @@
-# Building Notebook AI OS Desktop App
+# Building NARA Desktop App
 
-This guide covers building the Notebook AI OS desktop application for Windows.
+This guide covers building the NARA desktop application for Windows.
 
 ## How to Compile to EXE (Quick Reference)
 
@@ -12,11 +12,11 @@ npm install
 npm run build:all
 ```
 
-**Output:** `desktop/release/Notebook AI OS Setup 0.1.0.exe`
+**Output:** `desktop/release/NARA Setup 0.1.0.exe`
 
 **What happens:**
 1. Frontend compiles to static files (`frontend/build/`)
-2. Python backend freezes to exe (`backend/dist/notebook-backend/notebook-backend.exe`)
+2. Python backend freezes to exe (`backend/dist/nara-backend/nara-backend.exe`)
 3. Electron packages everything into Windows installer (`desktop/release/*.exe`)
 
 ---
@@ -80,7 +80,7 @@ cd ..
 
 ```
 desktop/release/
-└── Notebook AI OS Setup 0.1.0.exe    ← Windows installer
+└── NARA Setup 0.1.0.exe    ← Windows installer
 ```
 
 ### File Size
@@ -105,7 +105,7 @@ cd backend
 ../backend/.venv/Scripts/pyinstaller.exe backend.spec --clean --noconfirm
 ```
 
-Output: `backend/dist/notebook-backend/` (Python app + dependencies)
+Output: `backend/dist/nara-backend/` (Python app + dependencies)
 
 **Note:** First build takes 5-15 minutes depending on your machine. Subsequent builds are faster.
 
@@ -169,7 +169,7 @@ npm run build
 
 ### Electron Builder Fails
 
-1. Ensure `backend/dist/notebook-backend/notebook-backend.exe` exists
+1. Ensure `backend/dist/nara-backend/nara-backend.exe` exists
 2. Ensure `frontend/build/` exists
 3. Check `desktop/release/` directory is writable
 
@@ -191,10 +191,10 @@ Unsigned executables trigger SmartScreen. Options:
 ## Architecture
 
 ```
-Notebook AI OS.exe
+NARA.exe
 ├── resources/
 │   ├── backend/
-│   │   └── notebook-backend.exe  (PyInstaller frozen Python)
+│   │   └── nara-backend.exe  (PyInstaller frozen Python)
 │   └── frontend/
 │       └── build/                (SvelteKit static files)
 └── electron/
@@ -204,7 +204,7 @@ Notebook AI OS.exe
 
 **Runtime flow:**
 1. Electron starts
-2. Spawns `notebook-backend.exe` on port 8199
+2. Spawns `nara-backend.exe` on port 8199
 3. Waits for `/health` endpoint to respond
 4. Loads `http://127.0.0.1:8199` in BrowserWindow
 5. FastAPI serves both API (`/api/v1/*`) and static frontend (`/*`)

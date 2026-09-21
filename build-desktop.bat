@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo  Notebook AI OS - Desktop Build Script
+echo  NARA - Desktop Build Script
 echo ========================================
 echo.
 
@@ -45,7 +45,7 @@ echo  Build Complete!
 echo ========================================
 echo.
 echo  Installer location:
-echo  desktop\release\Notebook AI OS Setup 0.1.0.exe
+echo  desktop\release\NARA Setup 0.1.0.exe
 echo.
 
 :: Open the release folder

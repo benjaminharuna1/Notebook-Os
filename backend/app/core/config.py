@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    APP_NAME: str = "Notebook AI OS"
+    APP_NAME: str = "NARA"
     APP_VERSION: str = "0.1.0"
     # One or more allowed browser origins. Accepts either a comma-separated
     # string (`http://localhost:5173,http://localhost:5174`) or a JSON list

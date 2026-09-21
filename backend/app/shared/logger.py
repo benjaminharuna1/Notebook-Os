@@ -2,7 +2,7 @@ import logging
 import sys
 
 
-def setup_logger(name: str = "notebook_ai") -> logging.Logger:
+def setup_logger(name: str = "nara") -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
 

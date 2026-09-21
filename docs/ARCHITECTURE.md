@@ -1,4 +1,4 @@
-# Notebook AI OS — Architecture Index
+# NARA — Architecture Index
 
 > This file is an index. Detailed architecture documentation is split into focused files under `docs/` to reduce context for coding agents.
 
@@ -18,13 +18,13 @@
 
 ## Summary
 
-**Notebook AI OS** is a local-first AI research assistant. 15 backend features, 12 frontend features. FastAPI + SvelteKit + SQLite + ChromaDB. 175 tests.
+**NARA** (Notebook And Research Assistant) is a local-first AI research assistant. 16 backend features, 13 frontend features. FastAPI + SvelteKit + SQLite + ChromaDB. 183 tests.
 
 ```
 Backend pipeline:
 01_auth → 02_projects → 03_ingestion → 04_processing → 05_embedding →
 06_documents → 07_search → 08_chat → 09_graph → 10_literature →
-11_models → 12_skills → 13_settings → 14_actions
+11_models → 12_skills → 13_settings → 14_actions → 15_export
 ```
 
 ## Agent Entry Points

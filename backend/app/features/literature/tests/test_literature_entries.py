@@ -1,12 +1,11 @@
 import asyncio
 import json
 import sqlite3
-from io import BytesIO
 from unittest.mock import patch
 
 import pytest
-from openpyxl import load_workbook
 
+from app.core import citations
 from app.features.documents.repository import DocumentRepository
 from app.features.literature import jobs
 from app.features.literature.llm_service import LiteratureLLMService
@@ -109,50 +108,10 @@ def test_user_update_can_clear_a_field():
 
 
 def test_auto_citation_formats():
-    assert LiteratureService.auto_citation({"authors": ["Smith, Jane"], "year": 2020}) == "Smith, 2020"
-    assert LiteratureService.auto_citation({"authors": ["Ada Lovelace"], "year": None}) == "Lovelace, n.d."
-    assert LiteratureService.auto_citation({"author": "Jones; Green", "year": 1999, "authors": []}) == "Jones, 1999"
-    assert LiteratureService.auto_citation({"title": "No Authors Here", "year": 2001, "authors": []}) == "No Authors Here, 2001"
-
-
-# --- export -----------------------------------------------------------------
-
-
-def test_export_rows_falls_back_to_auto_values():
-    db = _db()
-    _seed_paper(db, "p1", "proj1", "Deep Learning Survey", author="Smith", year=2021, authors=["Smith, Jane"])
-    _seed_paper(db, "p2", "proj1", "Another Study", author="Jones", year=2020, authors=["Jones, Bob"])
-    service = LiteratureService(db)
-    service.ensure_entries("u1", "proj1")
-    service.upsert_entry("p2", "u1", "proj1", {"research_objective": "Research Q for p2"}, auto=False)
-
-    rows = service.export_rows("u1", "proj1")
-    by_title = {r["title"]: r for r in rows}
-    assert set(by_title) == {"Deep Learning Survey", "Another Study"}
-    assert by_title["Deep Learning Survey"]["citation"] == "Smith, 2021"
-    assert by_title["Another Study"]["research_objective"] == "Research Q for p2"
-    assert "Deep Learning Survey" in by_title["Deep Learning Survey"]["apa_reference"]
-    assert "Another Study" in by_title["Another Study"]["apa_reference"]
-
-
-def test_export_workbook_structure():
-    db = _db()
-    _seed_paper(db, "p1", "proj1", "Deep Learning Survey", author="Smith", year=2021)
-    _seed_paper(db, "p2", "proj1", "Another Study", author="Jones", year=2020)
-    service = LiteratureService(db)
-    service.ensure_entries("u1", "proj1")
-
-    data = service.export_workbook("u1", "proj1")
-    workbook = load_workbook(BytesIO(data))
-    sheet = workbook["Literature Mapping"]
-
-    headers = [sheet.cell(row=1, column=c).value for c in range(1, 9)]
-    assert headers[0] == "Paper Title"
-    assert headers[1] == "Citation (Author, Year)"
-    assert headers[-1] == "APA Reference"
-    assert sheet.max_row == 3  # header + 2 papers
-    citations = {sheet.cell(row=r, column=2).value for r in range(2, 4)}
-    assert {"Smith, 2021", "Jones, 2020"} <= citations
+    assert citations.auto_citation({"authors": ["Smith, Jane"], "year": 2020}) == "Smith, 2020"
+    assert citations.auto_citation({"authors": ["Ada Lovelace"], "year": None}) == "Lovelace, n.d."
+    assert citations.auto_citation({"author": "Jones; Green", "year": 1999, "authors": []}) == "Jones, 1999"
+    assert citations.auto_citation({"title": "No Authors Here", "year": 2001, "authors": []}) == "No Authors Here, 2001"
 
 
 # --- LLM entry generation ---------------------------------------------------
@@ -458,15 +417,15 @@ def test_apa_reference_includes_journal_volume_issue_pages_publisher_url():
         "publisher": "Agri Press",
         "url": "https://example.org/paper",
     }
-    ref = LiteratureService.apa_reference(paper)
+    ref = citations.apa_reference(paper)
     assert "Kibirige, D. (2014). A Study of Farming." in ref
     assert "Journal of Agriculture, 12(3), 44-60." in ref
     assert "https://example.org/paper" in ref
 
-    no_journal = LiteratureService.apa_reference({**paper, "journal": None, "volume": None, "issue": None, "pages": None})
+    no_journal = citations.apa_reference({**paper, "journal": None, "volume": None, "issue": None, "pages": None})
     assert "Agri Press." in no_journal
 
-    with_doi = LiteratureService.apa_reference({**paper, "doi": "10.1000/xyz"})
+    with_doi = citations.apa_reference({**paper, "doi": "10.1000/xyz"})
     assert "https://doi.org/10.1000/xyz" in with_doi
     assert "https://example.org/paper" not in with_doi
 

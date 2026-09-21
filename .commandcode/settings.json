@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Shell(uv:*)",
-      "Shell(curl -s -o - -w \" HTTP %{http_code}\" http://127.0.0.1:8000/health)"
+      "Shell(curl -s -o - -w \" HTTP %{http_code}\" http://127.0.0.1:8000/health)",
+      "Shell(.venvScriptspython.exe:*)",
+      "Shell(cmd:*)"
     ],
     "deny": [],
     "defaultMode": "default"

@@ -6,6 +6,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from rapidfuzz import fuzz
 
+from app.core import citations
 from app.features.embedding.providers.factory import resolve_embedding_provider
 from app.features.graph.builder import layout_nodes
 from app.features.literature import metadata as metadata_sources
@@ -371,23 +372,6 @@ class LiteratureService:
         except (TypeError, ValueError):
             return set()
 
-    @staticmethod
-    def auto_citation(paper: dict) -> str:
-        """Derives a `Author, Year` citation from the paper's metadata."""
-        authors = paper.get("authors") or []
-        family = None
-        if authors:
-            first = authors[0]
-            family = first.split(",", 1)[0].strip() if ", " in first else (first.split()[-1] or None)
-        if not family and paper.get("author"):
-            parts = [a for a in re.split(r"[;,]", paper["author"]) if a.strip()]
-            if parts:
-                family = parts[0].split()[-1]
-        if not family:
-            family = (paper.get("title") or "Untitled")[:30]
-        year = paper.get("year")
-        return f"{family}, {year}" if year else f"{family}, n.d."
-
     def ensure_entries(self, user_id: str, project_id: str) -> int:
         """Seeds a literature_entries row per paper with citation + APA filled.
 
@@ -401,8 +385,8 @@ class LiteratureService:
                 user_id,
                 project_id,
                 {
-                    "citation": self.auto_citation(paper),
-                    "apa_reference": paper.get("apa_reference") or self.apa_reference(paper),
+                    "citation": citations.auto_citation(paper),
+                    "apa_reference": paper.get("apa_reference") or citations.apa_reference(paper),
                 },
                 auto=True,
             )
@@ -432,9 +416,9 @@ class LiteratureService:
                     user_id,
                     project_id,
                     {
-                        "citation": self.auto_citation(paper),
+                        "citation": citations.auto_citation(paper),
                         "apa_reference": paper.get("apa_reference")
-                        or self.apa_reference(paper),
+                        or citations.apa_reference(paper),
                     },
                     auto=True,
                 )
@@ -493,7 +477,7 @@ class LiteratureService:
             "pages": paper["pages"],
             "publisher": paper["publisher"],
             "url": paper["url"],
-            "apa_reference": paper["apa_reference"] or LiteratureService.apa_reference(paper),
+            "apa_reference": paper["apa_reference"] or citations.apa_reference(paper),
             "verification_status": paper["verification_status"],
             "metadata_user_edited": paper["metadata_user_edited"],
             "file_type": row["file_type"] if "file_type" in row.keys() else None,
@@ -570,7 +554,7 @@ class LiteratureService:
             else:
                 paper[key] = (value or "").strip() or None
 
-        apa = self.apa_reference(
+        apa = citations.apa_reference(
             {
                 "title": paper["title"],
                 "author": None,
@@ -639,7 +623,7 @@ class LiteratureService:
                 apa = preserved_apa
         entry_fields = {}
         if "citation" not in user_edited:
-            entry_fields["citation"] = self.auto_citation(paper)
+            entry_fields["citation"] = citations.auto_citation(paper)
         if "apa_reference" not in user_edited:
             entry_fields["apa_reference"] = apa
         if entry_fields:
@@ -652,134 +636,6 @@ class LiteratureService:
                 overwrite=set(entry_fields.keys()),
             )
         return self.get_metadata(paper_id, user_id, project_id)
-
-    def export_rows(self, user_id: str, project_id: str) -> List[dict]:
-        """One row per paper: title + the seven literature-mapping columns.
-
-        Filled from the editable entries where available, falling back to
-        auto-derived citation/APA so the sheet never has blank identity cells.
-        """
-        papers = self.papers(user_id, project_id)
-        entries = {e["paper_id"]: e for e in self.entries(user_id, project_id)}
-        rows = []
-        for paper in papers:
-            entry = entries.get(paper["id"]) or {}
-            rows.append(
-                {
-                    "title": paper.get("title") or "",
-                    "citation": (entry.get("citation") or "").strip()
-                    or self.auto_citation(paper),
-                    "research_objective": (entry.get("research_objective") or "").strip(),
-                    "methodology": (entry.get("methodology") or "").strip(),
-                    "key_findings": (entry.get("key_findings") or "").strip(),
-                    "limitations": (entry.get("limitations") or "").strip(),
-                    "relevance": (entry.get("relevance") or "").strip(),
-                    "apa_reference": (entry.get("apa_reference") or "").strip()
-                    or (paper.get("apa_reference") or "").strip(),
-                }
-            )
-        return rows
-
-    def export_workbook(self, user_id: str, project_id: str) -> bytes:
-        from io import BytesIO
-
-        from openpyxl import Workbook
-        from openpyxl.styles import Alignment, Font, PatternFill
-        from openpyxl.utils import get_column_letter
-
-        headers = [
-            "Paper Title",
-            "Citation (Author, Year)",
-            "Research Objective / Questions",
-            "Methodology & Sample",
-            "Key Findings",
-            "Limitations & Gaps",
-            "Relevance / Contribution",
-            "APA Reference",
-        ]
-        widths = [42, 22, 46, 42, 46, 42, 42, 52]
-
-        workbook = Workbook()
-        sheet = workbook.active
-        sheet.title = "Literature Mapping"
-        sheet.append(headers)
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill("solid", fgColor="4F46E5")
-        for col, width in enumerate(widths, start=1):
-            cell = sheet.cell(row=1, column=col)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = Alignment(vertical="center")
-            sheet.column_dimensions[get_column_letter(col)].width = width
-        sheet.freeze_panes = "A2"
-
-        for row in self.export_rows(user_id, project_id):
-            sheet.append(
-                [
-                    row["title"],
-                    row["citation"],
-                    row["research_objective"],
-                    row["methodology"],
-                    row["key_findings"],
-                    row["limitations"],
-                    row["relevance"],
-                    row["apa_reference"],
-                ]
-            )
-        for row_index in range(2, sheet.max_row + 1):
-            for col_index in range(1, len(headers) + 1):
-                sheet.cell(row=row_index, column=col_index).alignment = Alignment(
-                    wrap_text=True, vertical="top"
-                )
-
-        buffer = BytesIO()
-        workbook.save(buffer)
-        return buffer.getvalue()
-
-    def export_references_docx(self, user_id: str, project_id: str, project_name: str) -> bytes:
-        """Builds a Word document of APA references for every paper.
-
-        Layout: the project name as the document title, a ``References``
-        sub-heading, then each reference as a hanging-indent numbered paragraph,
-        sorted alphabetically and de-duplicated.
-        """
-        from io import BytesIO
-
-        from docx import Document
-        from docx.shared import Pt
-
-        papers = self.papers(user_id, project_id)
-        entries = {e["paper_id"]: e for e in self.entries(user_id, project_id)}
-        refs = []
-        for paper in papers:
-            entry = entries.get(paper["id"]) or {}
-            ref = (
-                (entry.get("apa_reference") or "").strip()
-                or (paper.get("apa_reference") or "").strip()
-                or self.apa_reference(paper)
-            )
-            if ref:
-                refs.append(ref)
-        refs = sorted({ref for ref in refs if ref})
-
-        document = Document()
-        document.add_heading(project_name or "References", level=0)
-        document.add_heading("References", level=1)
-        if not refs:
-            document.add_paragraph("No papers with references yet.")
-        for ref in refs:
-            paragraph = document.add_paragraph(ref)
-            try:
-                paragraph.style = document.styles["List Number"]
-            except KeyError:
-                pass
-            paragraph.paragraph_format.left_indent = Pt(36)
-            paragraph.paragraph_format.first_line_indent = Pt(-36)
-            paragraph.paragraph_format.space_after = Pt(6)
-
-        buffer = BytesIO()
-        document.save(buffer)
-        return buffer.getvalue()
 
     # --- Crossref enrichment ------------------------------------------------
 
@@ -1061,7 +917,7 @@ class LiteratureService:
                 paper.get("publisher"),
                 paper.get("url"),
                 paper.get("verification_status"),
-                self.apa_reference(paper),
+                citations.apa_reference(paper),
                 paper.get("extracted_doi"),
                 json.dumps(paper.get("metadata_candidates") or []),
                 paper.get("paper_type"),
@@ -1072,27 +928,6 @@ class LiteratureService:
             ),
         )
         self.db.commit()
-
-    @staticmethod
-    def _title_from_apa(apa: str) -> Optional[str]:
-        """Extract the article title from an APA 7th-edition reference string.
-
-        APA format: ``Author, A. A. (Year). Title of the article. Journal …``
-        The title sits between the year-closing ``). `` and the next sentence
-        boundary (``. `` followed by a capital letter or end of string).
-        """
-        if not apa:
-            return None
-        # Match the "(Year). " anchor — year may be "n.d."
-        m = re.search(r"\)\.\s+", apa)
-        if not m:
-            return None
-        rest = apa[m.end():]
-        # Title runs until the next ". " followed by a capital letter (journal
-        # name) or end of string.
-        end = re.search(r"\.\s+[A-Z]", rest)
-        title = rest[:end.start() + 1].strip() if end else rest.strip().rstrip(".")
-        return title if len(title.split()) >= 3 else None
 
     def recompute_all_apa(self, user_id: str, project_id: str) -> int:
         """Recomputes ``documents.apa_reference`` from current field values for
@@ -1107,7 +942,7 @@ class LiteratureService:
         for paper in papers:
             if paper.get("metadata_user_edited"):
                 continue
-            apa = self.apa_reference(paper)
+            apa = citations.apa_reference(paper)
             doc_apa = paper.get("apa_reference") or ""
             current_title = (paper.get("title") or "").strip()
             # Check if title looks like a filename or abbreviation
@@ -1120,7 +955,7 @@ class LiteratureService:
             )
             new_title = None
             if looks_bad and apa:
-                recovered = self._title_from_apa(apa)
+                recovered = citations.title_from_apa(apa)
                 if recovered and recovered != current_title:
                     new_title = recovered
             if apa != doc_apa or new_title:
@@ -1139,74 +974,6 @@ class LiteratureService:
         if updates:
             self.db.commit()
         return len(updates)
-
-    @staticmethod
-    def apa_reference(paper: dict) -> str:
-        authors = paper.get("authors") or []
-        year = paper.get("year") or "n.d."
-        title = (paper.get("title") or "Untitled").strip()
-        paper_type = (paper.get("paper_type") or "").strip()
-        edition = (paper.get("edition") or "").strip()
-        isbn = (paper.get("isbn") or "").strip()
-
-        if authors:
-            shown = "; ".join(authors[:7])
-            if len(authors) > 7:
-                shown += " …"
-            ref = f"{shown} ({year}). {title}"
-        else:
-            ref = f"{title} ({year})"
-
-        if paper_type == "textbook" and edition:
-            ref += f" ({edition} ed.)."
-        else:
-            ref += "."
-
-        journal = (paper.get("journal") or "").strip()
-        if paper_type == "textbook":
-            pass
-        elif paper_type == "newspaper" and journal:
-            pages = (paper.get("pages") or "").strip()
-            ref += f" {journal}"
-            if pages:
-                ref += f", {pages}"
-            ref += "."
-        elif paper_type == "preprint":
-            ref += " Preprint."
-        elif paper_type == "thesis":
-            publisher = (paper.get("publisher") or "").strip()
-            if publisher:
-                ref += f" {publisher}."
-        elif journal:
-            ref += f" {journal}"
-            volume = (paper.get("volume") or "").strip()
-            issue = (paper.get("issue") or "").strip()
-            if volume:
-                ref += f", {volume}" + (f"({issue})" if issue else "")
-            elif issue:
-                ref += f" ({issue})"
-            pages = (paper.get("pages") or "").strip()
-            if pages:
-                ref += f", {pages}"
-            ref += "."
-        else:
-            pages = (paper.get("pages") or "").strip()
-            if pages:
-                ref += f" {pages}."
-            publisher = (paper.get("publisher") or "").strip()
-            if publisher:
-                ref += f" {publisher}."
-
-        if paper_type == "textbook" and isbn:
-            ref += f" ISBN {isbn}"
-        else:
-            doi = (paper.get("doi") or "").strip().rstrip(".,")
-            url = (paper.get("url") or "").strip().rstrip(".,")
-            if doi:
-                ref += f" https://doi.org/{doi}"
-            elif url:
-                ref += f" {url}"
-        return ref
 
     # --- similarity edges ----------------------------------------------------
 
@@ -1468,24 +1235,24 @@ class LiteratureService:
         similarity = self.similarity_edges(user_id, papers)
 
         report(60, "Matching citations")
-        citations, refs, unmatched = self.citation_edges(papers)
+        citation_edges, refs, unmatched = self.citation_edges(papers)
         self.save_references(refs)
 
         report(66, "AI similarity & citations")
         ai_edges, ai_refs = self._ai_edge_pass(
-            user_id, papers, unmatched, similarity + citations
+            user_id, papers, unmatched, similarity + citation_edges
         )
         self.save_references(ai_refs)
 
         report(72, "Clustering")
-        edges = similarity + citations + ai_edges
+        edges = similarity + citation_edges + ai_edges
         node_cluster = self.assign_clusters(papers, edges)
 
         report(80, "Computing layout")
         node_rows = [
             {
                 "id": p["id"],
-                "label": self.auto_citation(p),
+                "label": citations.auto_citation(p),
                 "type": "paper",
                 "weight": 1.0,
                 "cluster": node_cluster.get(p["id"]),

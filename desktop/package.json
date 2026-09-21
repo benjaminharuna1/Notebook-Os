@@ -1,7 +1,7 @@
 {
-  "name": "notebook-ai-os",
+  "name": "nara",
   "version": "0.1.0",
-  "description": "Notebook AI OS - Local-first AI research assistant",
+  "description": "NARA (Notebook And Research Assistant) - local-first AI research assistant",
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
@@ -21,8 +21,8 @@
     "wait-on": "^8.0.0"
   },
   "build": {
-    "appId": "com.notebookai.os",
-    "productName": "Notebook AI OS",
+    "appId": "com.nara.app",
+    "productName": "NARA",
     "directories": {
       "output": "release",
       "buildResources": "assets"
@@ -33,7 +33,7 @@
     ],
     "extraResources": [
       {
-        "from": "../backend/dist/notebook-backend",
+        "from": "../backend/dist/nara-backend",
         "to": "backend",
         "filter": [
           "**/*"
@@ -69,7 +69,7 @@
       "uninstallerIcon": "assets/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Notebook AI OS",
+      "shortcutName": "NARA",
       "runAfterFinish": true,
       "installerHeaderIcon": "assets/icon.ico"
     },

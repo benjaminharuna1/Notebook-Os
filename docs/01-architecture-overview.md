@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Notebook AI OS** is a local-first AI research assistant that ingests, processes, understands, and reasons over research materials entirely on-device. Cloud models are optionally used as reasoning accelerators — they only ever receive structured, processed context, never raw documents.
+**NARA** (Notebook And Research Assistant) is a local-first AI research assistant that ingests, processes, understands, and reasons over research materials entirely on-device. Cloud models are optionally used as reasoning accelerators — they only ever receive structured, processed context, never raw documents.
 
 The system follows a strict layered architecture with clean separation between ingestion, storage, retrieval, AI routing, and UI.
 

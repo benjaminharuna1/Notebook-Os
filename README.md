@@ -1,6 +1,6 @@
-# Notebook AI OS
+# NARA
 
-Local-first AI research assistant. Chat with your PDFs entirely on-device.
+Notebook And Research Assistant — local-first AI research assistant. Chat with your PDFs entirely on-device.
 
 The app runs **fully local out of the box** — no Ollama, no cloud, no API keys.
 It uses [llama-cpp-python](https://pypi.org/project/llama-cpp-python/) to run small

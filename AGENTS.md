@@ -1,4 +1,4 @@
-# Notebook AI OS — AI Research Assistant
+# NARA — Notebook And Research Assistant
 
 Local-first research assistant that ingests, processes, and reasons over academic papers.
 
@@ -6,7 +6,7 @@ Local-first research assistant that ingests, processes, and reasons over academi
 
 ```
 Notebook Os/
-├── backend/app/              ← FastAPI API (14 feature modules)
+├── backend/app/              ← FastAPI API (16 feature modules)
 ├── frontend/src/             ← SvelteKit UI (mirrors backend features)
 ├── desktop/                  ← Electron desktop wrapper
 ├── backend/skills/           ← 8 AI skill definitions (JSON)
@@ -28,6 +28,8 @@ Notebook Os/
 | Ingestion pipeline | `backend/app/features/ingestion/service.py` |
 | Knowledge graph | `backend/app/features/graph/service.py` |
 | Literature mapping | `backend/app/features/literature/service.py` |
+| Export (slice the app into files) | `backend/app/features/export/snapshot.py` |
+| Citation / APA formatting | `backend/app/core/citations.py` |
 | AI skills system | `backend/app/features/skills/service.py` |
 | Frontend components | `frontend/src/lib/features/{name}/components/` |
 | Frontend API layer | `frontend/src/lib/features/{name}/api.ts` |
@@ -40,7 +42,7 @@ Notebook Os/
 ```
 01_auth → 02_projects → 03_ingestion → 04_processing → 05_embedding →
 06_documents → 07_search → 08_chat → 09_graph → 10_literature →
-11_models → 12_skills → 13_settings → 14_actions
+11_models → 12_skills → 13_settings → 14_actions → 15_export
 ```
 
 Features NEVER import from each other. Cross-feature data flows through
@@ -56,6 +58,7 @@ SQLite or events (`core/events.py`).
 - Token budgets: configurable in `config.py` (PROMPT_BUDGET_*)
 - Anti-hallucination: prompt_builder.py enforces indexed-paper-only answers
 - Citation style: APA 7th edition throughout
+- Export honesty: missing metadata and deleted-document citations are marked, never fabricated
 
 ## Files to read for deep context
 

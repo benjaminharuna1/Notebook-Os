@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 from unittest.mock import patch
 
+from app.core import citations
 from app.features.literature import jobs
 from app.features.literature.llm_service import LiteratureLLMService
 from app.features.literature.service import LiteratureService
@@ -140,7 +141,7 @@ def test_enrichment_marks_verified_with_doi_authors_and_apa():
     assert paper["year"] == 2021
     assert paper["authors"] == ["Smith, Jane", "Doe, John"]
     assert paper["abstract"] == "We review methods."
-    ref = service.apa_reference(paper)
+    ref = citations.apa_reference(paper)
     assert "Smith, Jane; Doe, John (2021)." in ref
     assert "https://doi.org/10.1000/xyz" in ref
 

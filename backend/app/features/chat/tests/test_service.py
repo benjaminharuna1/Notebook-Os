@@ -1,5 +1,7 @@
+import json
 import sqlite3
 
+from app.core import citations
 from app.features.skills.service import SkillsService
 
 
@@ -31,21 +33,39 @@ def test_chat_apa_reference_row_access_uses_real_column():
     conn.row_factory = sqlite3.Row
     conn.execute(
         """CREATE TABLE documents (
-            id TEXT PRIMARY KEY, apa_reference TEXT)"""
+            id TEXT PRIMARY KEY, title TEXT, author TEXT, year INTEGER,
+            authors TEXT, apa_reference TEXT)"""
     )
     conn.executemany(
-        "INSERT INTO documents (id, apa_reference) VALUES (?, ?)",
-        [("d1", "APA citation for d1"), ("d2", None)],
+        """INSERT INTO documents (id, title, author, year, authors, apa_reference)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        [
+            ("d1", "A Study of Farming", None, 2014, '["Kibirige, D."]', "APA citation for d1"),
+            ("d2", "Unattributed Report", None, None, None, None),
+        ],
     )
     conn.commit()
 
     doc_ids_for_refs = ["d1", "d2"]
     ph = ",".join("?" for _ in doc_ids_for_refs)
     apa_map: dict[str, str] = {}
+    citation_map: dict[str, str] = {}
     for row in conn.execute(
-        f"SELECT id, apa_reference FROM documents WHERE id IN ({ph})", doc_ids_for_refs
+        f"""SELECT id, title, author, year, authors, apa_reference
+            FROM documents WHERE id IN ({ph})""",
+        doc_ids_for_refs,
     ).fetchall():
         if row["apa_reference"]:
             apa_map[row["id"]] = row["apa_reference"]
+        parsed = json.loads(row["authors"]) if row["authors"] else []
+        citation_map[row["id"]] = citations.auto_citation(
+            {
+                "title": row["title"],
+                "author": row["author"],
+                "year": row["year"],
+                "authors": parsed,
+            }
+        )
 
     assert apa_map == {"d1": "APA citation for d1"}
+    assert citation_map == {"d1": "Kibirige, 2014", "d2": "Unattributed Report, n.d."}

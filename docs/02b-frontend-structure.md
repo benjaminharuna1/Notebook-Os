@@ -9,14 +9,14 @@ frontend/
 │   ├── lib/
 │   │   ├── core/                      # Shared non-feature code
 │   │   │   ├── api/
-│   │   │   │   └── client.ts          # Base fetch wrapper (auth, errors, SSE)
+│   │   │   │   └── client.ts          # Base fetch wrapper (auth, errors, SSE, downloads)
 │   │   │   ├── components/
 │   │   │   │   ├── ui/                # Headless/generic UI primitives
 │   │   │   │   └── layout/            # AppShell, Sidebar, Header
 │   │   │   └── stores/
 │   │   │       └── toasts.ts          # Global notification store
 │   │   │
-│   │   └── features/                  # ← FEATURE-BASED MODULES (12 features)
+│   │   └── features/                  # ← FEATURE-BASED MODULES (13 features)
 │   │       │
 │   │       ├── auth/                  # Login/register UI
 │   │       │   ├── api.ts
@@ -74,6 +74,11 @@ frontend/
 │   │       ├── literature/            # Literature mapping UI
 │   │       │   ├── api.ts
 │   │       │   └── components/
+│   │       │
+│   │       ├── export/                # Project export menu (workbook + dossier)
+│   │       │   ├── api.ts
+│   │       │   └── components/
+│   │       │       └── ExportMenu.svelte
 │   │       │
 │   │       ├── models/                # Model selector & switching
 │   │       │   ├── api.ts

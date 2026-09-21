@@ -1,9 +1,8 @@
 import json
-import re
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from app.core.database import get_sqlite_connection
 from app.core.dependencies import get_current_user, get_db
@@ -209,55 +208,6 @@ async def regenerate_literature_metadata(
         req.paper_ids,
     )
     return {"processed": len(results), "results": results}
-
-
-@router.get("/projects/{project_id}/literature/export")
-async def export_literature_map(
-    project_id: str,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
-):
-    service = LiteratureService(db)
-    data = service.export_workbook(current_user["id"], project_id)
-
-    row = db.execute(
-        "SELECT name FROM projects WHERE id = ? AND user_id = ?",
-        (project_id, current_user["id"]),
-    ).fetchone()
-    project_name = (row["name"] if row else "project") or "project"
-    slug = re.sub(r"[^A-Za-z0-9_-]+", "-", project_name).strip("-").lower() or "project"
-    filename = f"literature-mapping-{slug}.xlsx"
-    return Response(
-        content=data,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@router.get("/projects/{project_id}/literature/references/export.docx")
-async def export_literature_references(
-    project_id: str,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
-):
-    row = db.execute(
-        "SELECT name FROM projects WHERE id = ? AND user_id = ?",
-        (project_id, current_user["id"]),
-    ).fetchone()
-    project_name = (row["name"] if row else "project") or "project"
-
-    service = LiteratureService(db)
-    data = service.export_references_docx(current_user["id"], project_id, project_name)
-
-    slug = re.sub(r"[^A-Za-z0-9_-]+", "-", project_name).strip("-").lower() or "project"
-    filename = f"{slug}-references.docx"
-    return Response(
-        content=data,
-        media_type=(
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        ),
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
 
 
 @router.post("/projects/{project_id}/literature/clusters/summary")

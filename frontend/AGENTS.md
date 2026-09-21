@@ -1,6 +1,6 @@
-# Notebook AI OS Frontend
+# NARA Frontend
 
-SvelteKit + TypeScript + Tailwind UI for the Notebook AI OS research assistant.
+SvelteKit + TypeScript + Tailwind UI for the NARA research assistant.
 
 ## Directory tree
 
