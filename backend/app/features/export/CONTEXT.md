@@ -1,43 +1,52 @@
 # export — getting the researcher's work out of the app
 
-One job: read a project into an export snapshot and render it as the two artifacts the researcher
-takes away. Read-only, offline, no LLM, no network.
+One job: read a project into an export snapshot and render it as the artifacts the researcher
+takes away. Read-only, offline, no LLM, no network. Documents only — saved conversations and
+answers are deliberately never part of an artifact.
 
 ## Inputs
 
 | Input | Source | Notes |
 |---|---|---|
 | project_id | URL param | Scope to project |
-| include_answers | Query param (dossier only) | Include saved chat answers |
+| format | Query param | `docx` or `xlsx` |
 | user_id | JWT | `get_current_user` |
 
 ## Process
 
-1. **Snapshot** — `snapshot.build()` reads SQLite directly (documents, literature_entries,
-   chat_sessions, chat_messages). No other feature is imported.
-2. **Honesty pass** — missing metadata, the three blank states, and citations to deleted documents
-   are resolved into explicit markers during snapshot assembly, so both renderers inherit them.
-3. **Render** — `workbook.render()` and `dossier.render()` walk the same snapshot.
+1. **Snapshot** — `snapshot.build()` reads SQLite directly (documents, literature_entries). No other
+   feature is imported, and `chat_*` tables are never read.
+2. **Honesty pass** — missing metadata and the three blank states are resolved into explicit markers
+   during snapshot assembly, so every renderer inherits them.
+3. **Render** — the resource's renderer for the requested format walks the same snapshot.
 4. **Refuse empties** — a project with no papers is a 400, never a header-only file.
 
 CPU-bound rendering is pushed off the event loop with `run_in_threadpool` (as `models/router.py` does).
 
 ## Outputs
 
-| Output | Type | Notes |
+Two resources, each available as Word or Excel:
+
+| Resource | `format=docx` | `format=xlsx` |
 |---|---|---|
-| Snapshot | `Snapshot` dataclass tree | Papers + provenance, sessions + sources, unresolved list |
-| Literature workbook | Binary (`.xlsx`) | 14 columns; adds Authors/Year/DOI/Journal + `Missing metadata` + `Source` to the previous 8 |
-| Project dossier | Binary (`.docx`) | Cover page stating what is missing, references, paper notes, optional answers |
+| **dossier** | Cover page stating what is missing, references, paper notes | The literature matrix — one row per paper, 14 columns with provenance |
+| **references** | The compiled APA bibliography, complete entries first, in a hanging-indent list | One row per reference with Authors/Year/Title/Journal/DOI/APA + its gaps |
+
+Plus the shared `Snapshot` dataclass tree — papers + provenance and the unresolved list.
+
+`references.compile()` is the single definition of the bibliography (de-duplicated, sorted
+alphabetically, incomplete entries flagged), used by both the standalone export and the dossier's
+reference section.
 
 ## Key files
 
 | File | Purpose |
 |---|---|
 | `snapshot.py` | Snapshot assembly + every honesty rule |
-| `workbook.py` | `.xlsx` renderer (openpyxl) |
-| `dossier.py` | `.docx` renderer (python-docx) |
-| `router.py` | Two GET endpoints, both returning a binary attachment |
+| `references.py` | APA bibliography compile + both of its renderers |
+| `workbook.py` | Dossier as `.xlsx` (openpyxl) |
+| `dossier.py` | Dossier as `.docx` (python-docx) |
+| `router.py` | Two GET endpoints, `?format=docx\|xlsx`, returning a binary attachment |
 
 ## Honesty rules (the point of this feature)
 
@@ -46,10 +55,12 @@ CPU-bound rendering is pushed off the event loop with `run_in_threadpool` (as `m
 - Provenance (`verified` / `ai-suggested` / `edited by you` / `never enriched`) is a column, from
   `verification_status` and `metadata_user_edited`.
 - The three blank states are distinguished: `not generated yet`, `empty`, `cleared by you`.
-- A source whose document was deleted keeps the citation captured at answer time and is marked
-  `not in this project any more`, counted on the dossier's cover page. It is never silently dropped.
-- The dossier's `References` section carries only complete references; papers with incomplete
-  metadata are listed separately as `References with incomplete metadata`.
+- Because exports contain documents only, the surviving-document caveat is structural rather than
+  cosmetic: every reference in an artifact points at a paper that is in the project at export time,
+  so no artifact can contain a citation to a deleted document.
+- The bibliography accounts for *every* paper. Entries are never dropped because they are
+  incomplete; the complete ones come first and the rest follow under
+  `References with incomplete metadata`, labelled with what is missing.
 
 ## Dependencies
 
@@ -64,3 +75,4 @@ literature page still exports.
 - No cross-feature imports: `grep -r "from app.features" app/features/export/` finds only `export`
   importing itself
 - Export a project with an unenriched paper and confirm the workbook says why
+- Export the references as Word and as Excel and confirm both list the unenriched paper

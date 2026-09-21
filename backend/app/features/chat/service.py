@@ -3,7 +3,6 @@ import re
 
 from fastapi.responses import StreamingResponse
 
-from app.core import citations
 from app.core.config import settings
 from app.shared.logger import logger
 from app.features.chat.repository import ChatRepository
@@ -12,17 +11,6 @@ from app.features.models.service import ModelService
 from app.features.search.service import SearchService
 from app.features.skills.service import SkillsService
 from app.shared.id_utils import generate_id
-
-
-def _parse_authors(raw) -> list[str]:
-    """Reads the documents.authors column, which holds a JSON array string."""
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except (TypeError, ValueError):
-        return []
-    return [str(a) for a in parsed] if isinstance(parsed, list) else []
 
 
 class ChatService:
@@ -413,27 +401,13 @@ class ChatService:
         # Build APA references string for the prompt
         doc_ids_for_refs = list({getattr(s, "document_id", None) for s in sources if getattr(s, "document_id", None)})
         apa_map: dict[str, str] = {}
-        # Citation labels are captured alongside the answer so an exported
-        # transcript can still name what an assertion rested on after the
-        # underlying document has been deleted.
-        citation_map: dict[str, str] = {}
         if doc_ids_for_refs:
             ph = ",".join("?" for _ in doc_ids_for_refs)
             for row in self.db.execute(
-                f"""SELECT id, title, author, year, authors, apa_reference
-                    FROM documents WHERE id IN ({ph})""",
-                doc_ids_for_refs,
+                f"SELECT id, apa_reference FROM documents WHERE id IN ({ph})", doc_ids_for_refs
             ).fetchall():
                 if row["apa_reference"]:
                     apa_map[row["id"]] = row["apa_reference"]
-                citation_map[row["id"]] = citations.auto_citation(
-                    {
-                        "title": row["title"],
-                        "author": row["author"],
-                        "year": row["year"],
-                        "authors": _parse_authors(row["authors"]),
-                    }
-                )
 
         # Deduplicated APA references in order of first appearance
         seen_refs: list[str] = []
@@ -490,7 +464,6 @@ class ChatService:
                 "page": s.page_number,
                 "document_id": getattr(s, "document_id", None),
                 "apa_reference": apa_map.get(getattr(s, "document_id", None), ""),
-                "citation": citation_map.get(getattr(s, "document_id", None), ""),
             }
             for s in sources
         ]

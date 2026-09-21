@@ -143,10 +143,11 @@ backend/
 │       │
 │       ├── export/                    # Feature: project export artifacts
 │       │   ├── __init__.py
-│       │   ├── router.py              # GET /projects/{id}/export/workbook, /export/dossier
+│       │   ├── router.py              # GET /projects/{id}/export/{dossier,references}?format=
 │       │   ├── snapshot.py            # Snapshot assembly + missing-data honesty rules
-│       │   ├── workbook.py            # XLSX renderer (openpyxl)
-│       │   ├── dossier.py             # DOCX renderer (python-docx)
+│       │   ├── references.py          # APA bibliography compile + docx/xlsx renderers
+│       │   ├── workbook.py            # Dossier as XLSX (openpyxl)
+│       │   ├── dossier.py             # Dossier as DOCX (python-docx)
 │       │   └── tests/
 │       │       └── test_export.py
 │       │

@@ -18,7 +18,7 @@
 
 ## Summary
 
-**NARA** (Notebook And Research Assistant) is a local-first AI research assistant. 16 backend features, 13 frontend features. FastAPI + SvelteKit + SQLite + ChromaDB. 183 tests.
+**NARA** (Notebook And Research Assistant) is a local-first AI research assistant. 16 backend features, 13 frontend features. FastAPI + SvelteKit + SQLite + ChromaDB. 190 tests.
 
 ```
 Backend pipeline:

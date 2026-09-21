@@ -1,11 +1,13 @@
+import asyncio
 import json
 import sqlite3
 from io import BytesIO
 
 from docx import Document
+from fastapi import HTTPException
 from openpyxl import load_workbook
 
-from app.features.export import dossier, snapshot as snapshot_mod, workbook
+from app.features.export import dossier, references, router, snapshot as snapshot_mod, workbook
 
 _SCHEMA = """
 CREATE TABLE projects (id TEXT PRIMARY KEY, user_id TEXT, name TEXT);
@@ -123,49 +125,6 @@ def test_three_blank_states_are_distinguished():
     assert by_title["Auto generated"].entry.values["key_findings"] == snapshot_mod.NOT_GENERATED
     assert by_title["User cleared"].entry.values["key_findings"] == snapshot_mod.CLEARED_BY_YOU
     assert by_title["Plain empty"].entry.values["key_findings"] == snapshot_mod.EMPTY
-
-
-def test_citation_to_deleted_document_is_marked_not_dropped():
-    db = _db()
-    _seed_paper(db, "p1", "Still Here", authors=["Smith, J."], year=2020)
-    sources = [
-        {
-            "chunk_id": "c1",
-            "title": "Still Here",
-            "page": 2,
-            "document_id": "p1",
-            "apa_reference": "Smith, J. (2020). Still Here.",
-            "citation": "Smith, 2020",
-        },
-        {
-            "chunk_id": "c2",
-            "title": "Removed Paper",
-            "page": 7,
-            "document_id": "p-gone",
-            "apa_reference": "Doe, J. (2019). Removed Paper.",
-            "citation": "Doe, 2019",
-        },
-    ]
-    db.execute(
-        "INSERT INTO chat_sessions (id, user_id, project_id, title, model_used, created_at)"
-        " VALUES ('s1', 'u1', 'proj1', 'First pass', 'local:x', '2024-01-01')"
-    )
-    db.execute(
-        "INSERT INTO chat_messages (id, session_id, role, content, sources, created_at)"
-        " VALUES ('m1', 's1', 'assistant', 'An answer.', ?, '2024-01-01')",
-        (json.dumps(sources),),
-    )
-    db.commit()
-
-    snap = snapshot_mod.build(db, "u1", "proj1")
-
-    message = snap.sessions[0].messages[0]
-    live, gone = message.sources
-    assert live.deleted is False
-    assert live.label == "Smith, 2020"
-    assert gone.deleted is True
-    assert gone.label == f"Doe, 2019 {snapshot_mod.NOT_IN_PROJECT}"
-    assert any("no longer in this project" in item for item in snap.unresolved)
 
 
 def test_snapshot_is_scoped_and_ordered_by_title():
@@ -289,7 +248,7 @@ def test_dossier_says_nothing_missing_when_project_is_clean():
     assert "To test." in text
 
 
-def test_dossier_includes_answers_only_when_requested():
+def test_dossier_never_includes_conversations():
     db = _db()
     _seed_paper(db, "p1", "A Paper", authors=["Smith, J."], year=2020)
     db.execute(
@@ -303,14 +262,13 @@ def test_dossier_includes_answers_only_when_requested():
     db.commit()
 
     snap = snapshot_mod.build(db, "u1", "proj1")
+    text = "\n".join(_paragraphs(dossier.render(snap)))
+    refs_text = "\n".join(_paragraphs(references.render_docx(snap)))
 
-    without = "\n".join(_paragraphs(dossier.render(snap, include_answers=False)))
-    with_answers = "\n".join(_paragraphs(dossier.render(snap, include_answers=True)))
-
-    assert "The key finding was X." not in without
-    assert "Saved answers" not in without
-    assert "The key finding was X." in with_answers
-    assert "First pass" in with_answers
+    for artifact in (text, refs_text):
+        assert "The key finding was X." not in artifact
+        assert "Saved answers" not in artifact
+        assert "First pass" not in artifact
 
 
 def test_dossier_references_are_sorted_deduplicated_and_hanging_indented():
@@ -331,3 +289,158 @@ def test_dossier_references_are_sorted_deduplicated_and_hanging_indented():
     document = Document(BytesIO(data))
     numbered = [p for p in document.paragraphs if p.text.startswith("Alpha, A.")]
     assert numbered[0].paragraph_format.first_line_indent.pt == -36
+
+
+# --- references -------------------------------------------------------------
+
+
+def test_references_compile_dedupes_sorts_and_flags_incomplete():
+    db = _db()
+    _seed_paper(db, "p1", "Zeta Study", authors=["Zeta, Z."], year=2020)
+    _seed_paper(db, "p2", "Alpha Study", authors=["Alpha, A."], year=2021)
+    _seed_paper(db, "p3", "Alpha Study", authors=["Alpha, A."], year=2021)
+    _seed_paper(db, "p4", "Unattributed Report", authors=None, year=None)
+    db.commit()
+
+    refs = references.compile(snapshot_mod.build(db, "u1", "proj1"))
+
+    assert [r.apa for r in refs] == [
+        "Alpha, A. (2021). Alpha Study.",
+        "Unattributed Report (n.d.).",
+        "Zeta, Z. (2020). Zeta Study.",
+    ]
+    by_title = {r.title: r for r in refs}
+    assert by_title["Alpha Study"].complete is True
+    assert by_title["Unattributed Report"].complete is False
+    assert by_title["Unattributed Report"].authors == snapshot_mod.AUTHOR_UNKNOWN
+    assert "authors" in by_title["Unattributed Report"].missing_fields
+
+
+def test_references_docx_keeps_incomplete_entries_in_their_own_section():
+    db = _db()
+    _seed_paper(db, "p1", "Complete Paper", authors=["Smith, J."], year=2020)
+    _seed_paper(db, "p2", "Incomplete Paper", authors=None, year=None)
+    db.commit()
+
+    text = "\n".join(_paragraphs(references.render_docx(snapshot_mod.build(db, "u1", "proj1"))))
+
+    assert "References" in text
+    assert "References with incomplete metadata" in text
+    assert "Smith, J. (2020). Complete Paper." in text
+    assert "Incomplete Paper (n.d.)." in text
+    assert "Incomplete: authors" in text
+
+
+def test_references_docx_says_so_when_there_are_none():
+    db = _db()
+    db.commit()
+
+    text = "\n".join(_paragraphs(references.render_docx(snapshot_mod.build(db, "u1", "proj1"))))
+
+    assert "This project has no references yet." in text
+
+
+def test_dossier_and_references_export_describe_the_gap_identically():
+    db = _db()
+    _seed_paper(db, "p1", "Incomplete Paper", authors=None, year=None)
+    db.commit()
+    snap = snapshot_mod.build(db, "u1", "proj1")
+
+    dossier_text = "\n".join(_paragraphs(dossier.render(snap)))
+    refs_text = "\n".join(_paragraphs(references.render_docx(snap)))
+
+    assert "Incomplete: authors, year, doi, journal" in dossier_text
+    assert "Incomplete: authors, year, doi, journal" in refs_text
+
+
+def test_references_xlsx_lists_every_reference_with_its_gaps():
+    db = _db()
+    _seed_paper(db, "p1", "Complete Paper", authors=["Smith, J."], year=2020,
+                doi="10.1000/abc", journal="Journal of Things", verification_status="verified")
+    _seed_paper(db, "p2", "Incomplete Paper", authors=None, year=None)
+    db.commit()
+
+    data = references.render_xlsx(snapshot_mod.build(db, "u1", "proj1"))
+    sheet = load_workbook(BytesIO(data)).active
+
+    headers = [c.value for c in sheet[1]]
+    assert headers == references.HEADERS
+    rows = {row[2]: row for row in sheet.iter_rows(min_row=2, values_only=True)}
+    assert set(rows) == {"Complete Paper", "Incomplete Paper"}
+
+    complete = rows["Complete Paper"]
+    assert complete[headers.index("DOI")] == "10.1000/abc"
+    assert complete[headers.index("Source")] == "verified"
+    assert complete[headers.index("Missing metadata")] in (None, "")
+
+    incomplete = rows["Incomplete Paper"]
+    assert incomplete[headers.index("Authors")] == snapshot_mod.AUTHOR_UNKNOWN
+    assert "authors" in incomplete[headers.index("Missing metadata")]
+
+
+# --- router: the resource x format matrix -----------------------------------
+
+
+def _call(coro):
+    return asyncio.run(coro)
+
+
+def test_router_serves_both_resources_in_both_formats():
+    db = _db()
+    _seed_paper(db, "p1", "A Paper", authors=["Smith, J."], year=2020,
+                verification_status="verified")
+    db.commit()
+    user = {"id": "u1"}
+
+    dossier_docx = _call(router.export_dossier("proj1", "docx", user, db))
+    dossier_xlsx = _call(router.export_dossier("proj1", "xlsx", user, db))
+    refs_docx = _call(router.export_references("proj1", "docx", user, db))
+    refs_xlsx = _call(router.export_references("proj1", "xlsx", user, db))
+
+    assert dossier_docx.media_type.endswith("wordprocessingml.document")
+    assert refs_docx.media_type.endswith("wordprocessingml.document")
+    assert dossier_xlsx.media_type.endswith("spreadsheetml.sheet")
+    assert refs_xlsx.media_type.endswith("spreadsheetml.sheet")
+
+    assert dossier_docx.headers["content-disposition"] == (
+        'attachment; filename="my-thesis-dossier.docx"'
+    )
+    assert dossier_xlsx.headers["content-disposition"] == (
+        'attachment; filename="my-thesis-dossier.xlsx"'
+    )
+    assert refs_docx.headers["content-disposition"] == (
+        'attachment; filename="my-thesis-references.docx"'
+    )
+    assert refs_xlsx.headers["content-disposition"] == (
+        'attachment; filename="my-thesis-references.xlsx"'
+    )
+
+    # Every payload is a real file of the promised kind.
+    assert all(r.body.startswith(b"PK") for r in (dossier_docx, dossier_xlsx, refs_docx, refs_xlsx))
+    assert Document(BytesIO(dossier_docx.body)).paragraphs
+    assert load_workbook(BytesIO(refs_xlsx.body)).active["A1"].value == "Authors"
+
+
+def test_router_dossier_xlsx_is_the_literature_matrix_not_the_narrative():
+    db = _db()
+    _seed_paper(db, "p1", "A Paper", authors=["Smith, J."], year=2020)
+    db.commit()
+
+    xlsx = _call(router.export_dossier("proj1", "xlsx", {"id": "u1"}, db))
+    headers = [c.value for c in load_workbook(BytesIO(xlsx.body)).active[1]]
+
+    assert headers[0] == "Paper Title"
+    assert "Source" in headers
+
+
+def test_router_refuses_project_without_papers():
+    db = _db()
+    db.commit()
+
+    try:
+        _call(router.export_references("proj1", "docx", {"id": "u1"}, db))
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert "no papers" in exc.detail
+    else:
+        raise AssertionError("expected an HTTPException for a project with no papers")

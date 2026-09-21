@@ -16,7 +16,7 @@
     updatePaperMetadata,
   } from '$lib/features/literature/api';
   import type { LiteratureMetadata, MetadataCandidate } from '$lib/features/literature/api';
-  import { exportWorkbook } from '$lib/features/export/api';
+  import ExportMenu from '$lib/features/export/components/ExportMenu.svelte';
   import {
     actions as actionList,
     pauseAction,
@@ -30,7 +30,6 @@
   let entries = $state<LiteratureEntry[]>([]);
   let error = $state('');
   let loading = $state(false);
-  let exporting = $state(false);
   const building = $derived(
     ($actionList ?? []).find(
       (a) =>
@@ -232,18 +231,6 @@
       await refreshActions();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e ?? 'Could not pause the build');
-    }
-  }
-
-  async function exportExcel() {
-    if (!projectId || exporting) return;
-    exporting = true;
-    try {
-      await exportWorkbook(projectId);
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e ?? 'Export failed');
-    } finally {
-      exporting = false;
     }
   }
 
@@ -489,13 +476,7 @@
         {/if}
       </div>
       <div class="flex items-center gap-2">
-        <button
-          onclick={exportExcel}
-          disabled={exporting || (map.nodes ?? []).length === 0}
-          class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {exporting ? 'Exporting…' : '⇩ Export Excel'}
-        </button>
+        <ExportMenu {projectId} />
       </div>
     </div>
 

@@ -1,10 +1,14 @@
 import { downloadFile } from '$lib/core/api/client';
 
-export function exportWorkbook(projectId: string): Promise<string> {
-  return downloadFile(`/projects/${projectId}/export/workbook`);
+export type ExportFormat = 'docx' | 'xlsx';
+
+export function exportDossier(projectId: string, format: ExportFormat = 'docx'): Promise<string> {
+  return downloadFile(`/projects/${projectId}/export/dossier?format=${format}`);
 }
 
-export function exportDossier(projectId: string, includeAnswers = false): Promise<string> {
-  const query = includeAnswers ? '?include_answers=true' : '';
-  return downloadFile(`/projects/${projectId}/export/dossier${query}`);
+export function exportReferences(
+  projectId: string,
+  format: ExportFormat = 'docx',
+): Promise<string> {
+  return downloadFile(`/projects/${projectId}/export/references?format=${format}`);
 }

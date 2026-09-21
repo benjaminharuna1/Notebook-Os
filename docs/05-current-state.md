@@ -58,7 +58,7 @@
 
 ### Test Suite
 
-- **183 tests** across all features
+- **190 tests** across all features
 - Run: `cd backend && .venv\Scripts\python.exe -m pytest -q`
 - Tests are co-located in each feature's `tests/` directory
 - Coverage: auth, projects, ingestion, processing, embedding, documents, search, chat, graph (6 test files), literature (3 test files), export, models, skills, settings, actions
@@ -73,8 +73,9 @@
 - [x] Chat auto-learned insights persist in project_memory table
 - [x] Graph builds with checkpoints, themes, and tracked concepts
 - [x] Literature mapping produces entries with metadata enrichment (Crossref/OpenAlex/LLM)
-- [x] Export builds an XLSX workbook and a DOCX dossier from one snapshot; missing metadata and
-      deleted-document citations are marked rather than fabricated or dropped
+- [x] Export offers a dossier and a compiled APA reference list, each as Word or Excel, from one
+      snapshot; missing metadata is marked rather than fabricated or dropped
+- [x] Exports contain documents only — saved conversations are never included
 - [x] A project with no papers is refused with an explanation instead of an empty file
 - [x] Skills install, enable, and inject instructions into chat prompts
 - [x] All services start cleanly with `docker-compose up`

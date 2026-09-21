@@ -6,6 +6,16 @@
 per-format writers, delivered as **two** artifacts — an `.xlsx` workbook and a `.docx` dossier. No new
 dependencies. No network. No PDF pipeline.
 
+> **Two decisions changed during implementation.** The Export control lives on the Literature and
+> Library pages (not the project header), and saved conversations/answers are **not** exported at all
+> — every artifact contains documents only. That supersedes the "saved answers" option in §7 and the
+> deleted-document citation rules in §8, which no longer apply: an artifact can only ever cite a paper
+> that is in the project at export time. The living contract is `backend/app/features/export/CONTEXT.md`;
+> the reasoning and the rejected trade-off below (§4–§6) are unchanged.
+
+**Core decision** — the snapshot, the renderers, and the deliberate rejection of a PDF pipeline — stands as
+written. The two notes above are the only departures.
+
 ---
 
 ## 1. The problem

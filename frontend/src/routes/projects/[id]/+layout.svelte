@@ -2,7 +2,6 @@
   import { page } from '$app/stores';
   import Header from '$lib/core/components/layout/Header.svelte';
   import { getProject } from '$lib/features/projects/api';
-  import ExportMenu from '$lib/features/export/components/ExportMenu.svelte';
   import { toasts } from '$lib/core/stores/toasts';
   import type { Project } from '$lib/features/projects/types';
 
@@ -35,17 +34,10 @@
     <div class="flex flex-1 items-center justify-center text-slate-400">Project not found</div>
   {:else}
     <div class="border-b border-slate-200 px-6 py-3">
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <h1 class="text-lg font-bold text-slate-900">{project?.name ?? 'Loading...'}</h1>
-          {#if project?.description}
-            <p class="truncate text-sm text-slate-500">{project.description}</p>
-          {/if}
-        </div>
-        {#if projectId}
-          <ExportMenu {projectId} />
-        {/if}
-      </div>
+      <h1 class="text-lg font-bold text-slate-900">{project?.name ?? 'Loading...'}</h1>
+      {#if project?.description}
+        <p class="truncate text-sm text-slate-500">{project.description}</p>
+      {/if}
       <nav class="mt-2 flex gap-5 text-sm">
         <a
           href="/projects/{projectId}/chat"

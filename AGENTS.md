@@ -58,7 +58,7 @@ SQLite or events (`core/events.py`).
 - Token budgets: configurable in `config.py` (PROMPT_BUDGET_*)
 - Anti-hallucination: prompt_builder.py enforces indexed-paper-only answers
 - Citation style: APA 7th edition throughout
-- Export honesty: missing metadata and deleted-document citations are marked, never fabricated
+- Export honesty: missing metadata is marked, never fabricated; exports contain documents only
 
 ## Files to read for deep context
 

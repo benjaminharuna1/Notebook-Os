@@ -33,7 +33,7 @@ No dedicated store — relies on route-level data loading and local component st
 ## Special patterns
 
 - **SSE streaming**: `streamClusterSummary()` and `streamPaperSummary()` for LLM-generated summaries
-- **Exports**: the literature page's export button calls `exportWorkbook()` from `$lib/features/export/api`
+- **Exports**: the literature page mounts the `export` feature's `ExportMenu` in its header row
 - **PDF viewer**: `getDocumentFileUrl()` fetches PDF as blob for inline viewing
 - **Type reuse**: Imports `GraphNode`, `GraphEdge`, `LiteratureEntry` from `graph/types.ts`
 - **Metadata candidates**: External metadata sources suggested with confidence scores — user picks one

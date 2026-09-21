@@ -1,29 +1,39 @@
 # Export Feature Contract
 
-Exporting a project out of the app — the two artifacts the researcher takes away.
+Exporting a project out of the app — two resources, each in Word or Excel.
 
 ## What it does
 
-Provides one `ExportMenu` mounted in the project header, offering the literature workbook (`.xlsx`)
-and the project dossier (`.docx`). Both downloads go through the shared `downloadFile()` helper in
-`core/api/client.ts`, so auth headers, the 401 redirect, and the `Content-Disposition` filename are
-handled in one place.
+Provides one `ExportMenu` mounted on the **Literature** page and the **Library** page (via
+`DocumentList`), replacing the single-format export buttons that used to sit on each. It offers two
+resources, each with a Word and an Excel button:
+
+| Resource | Word | Excel |
+|---|---|---|
+| **Dossier** | Cover page, references and paper notes | The literature matrix, one row per paper |
+| **References** | The compiled APA bibliography | One row per reference, with its gaps |
+
+Conversations and answers are not part of any export.
+
+Both downloads go through the shared `downloadFile()` helper in `core/api/client.ts`, so auth
+headers, the 401 redirect, and the `Content-Disposition` filename are handled in one place.
 
 ## API endpoints called
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/projects/{id}/export/workbook` | GET | Literature workbook (`.xlsx`) |
-| `/projects/{id}/export/dossier` | GET | Project dossier (`.docx`); `?include_answers=true` adds saved answers |
+| `/projects/{id}/export/dossier?format=docx\|xlsx` | GET | Dossier |
+| `/projects/{id}/export/references?format=docx\|xlsx` | GET | Compiled APA bibliography |
 
 ## State managed
 
-No store — the menu holds local `$state` for open/busy and the "include answers" checkbox.
+No store — the menu holds local `$state` for open/busy.
 
 ## Special patterns
 
-- **Downloads**: `exportWorkbook()` / `exportDossier()` return the saved filename, which the menu
-  surfaces in a success toast
+- **Downloads**: the export functions return the saved filename, which the menu surfaces in a
+  success toast
+- **Busy state**: one spinner behind the trigger, and every format button disabled, while any
+  export is in flight
 - **Refusals**: the backend answers a paper-less project with a 400 whose detail is shown verbatim
   as an error toast
-- **Progress**: an inline spinner on the trigger while a render is in flight; the trigger is disabled

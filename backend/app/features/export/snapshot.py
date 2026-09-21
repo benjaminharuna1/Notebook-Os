@@ -25,7 +25,6 @@ AUTHOR_UNKNOWN = "(author unknown)"
 NOT_GENERATED = "not generated yet"
 CLEARED_BY_YOU = "cleared by you"
 EMPTY = "empty"
-NOT_IN_PROJECT = "not in this project any more"
 UNENRICHED = "never enriched"
 
 ENTRY_FIELDS = (
@@ -101,42 +100,6 @@ def _parse_json_list(raw: Any) -> list[str]:
 
 
 @dataclass
-class SourceRef:
-    """A citation as it stood when the answer was written."""
-
-    citation: str
-    title: str
-    page: Optional[int]
-    document_id: Optional[str]
-    deleted: bool = False
-
-    @property
-    def label(self) -> str:
-        """Never blank: falls back to the title, then to an explicit marker."""
-        label = (self.citation or "").strip() or (self.title or "").strip()
-        if not label:
-            return AUTHOR_UNKNOWN
-        return f"{label} {NOT_IN_PROJECT}" if self.deleted else label
-
-
-@dataclass
-class Message:
-    role: str
-    content: str
-    created_at: Optional[str]
-    sources: list[SourceRef] = field(default_factory=list)
-
-
-@dataclass
-class Session:
-    id: str
-    title: str
-    model_used: Optional[str]
-    created_at: Optional[str]
-    messages: list[Message] = field(default_factory=list)
-
-
-@dataclass
 class Entry:
     values: dict[str, str] = field(default_factory=dict)
 
@@ -169,14 +132,8 @@ class Paper:
 class Snapshot:
     project_name: str
     generated_at: str
-    model_used: Optional[str]
     papers: list[Paper]
-    sessions: list[Session]
     unresolved: list[str] = field(default_factory=list)
-
-    @property
-    def has_answers(self) -> bool:
-        return any(session.messages for session in self.sessions)
 
 
 def _provenance(row: dict) -> str:
@@ -271,69 +228,6 @@ def _build_paper(db, user_id: str, project_id: str, row: dict) -> Paper:
     )
 
 
-def _build_sessions(db, user_id: str, project_id: str, live_doc_ids: set[str]) -> list[Session]:
-    rows = db.execute(
-        """SELECT id, title, model_used, created_at FROM chat_sessions
-           WHERE user_id = ? AND project_id = ?
-           ORDER BY created_at, rowid""",
-        (user_id, project_id),
-    ).fetchall()
-
-    sessions: list[Session] = []
-    for row in rows:
-        messages = []
-        for msg in db.execute(
-            """SELECT role, content, sources, created_at FROM chat_messages
-               WHERE session_id = ? ORDER BY created_at, rowid""",
-            (row["id"],),
-        ).fetchall():
-            sources = []
-            for raw in _source_entries(msg["sources"]):
-                doc_id = raw.get("document_id")
-                # A source whose document is gone keeps the citation captured at
-                # answer time, marked rather than silently dropped.
-                deleted = bool(doc_id) and doc_id not in live_doc_ids
-                sources.append(
-                    SourceRef(
-                        citation=str(raw.get("citation") or ""),
-                        title=str(raw.get("title") or ""),
-                        page=raw.get("page"),
-                        document_id=doc_id,
-                        deleted=deleted,
-                    )
-                )
-            messages.append(
-                Message(
-                    role=msg["role"],
-                    content=msg["content"],
-                    created_at=msg["created_at"],
-                    sources=sources,
-                )
-            )
-        sessions.append(
-            Session(
-                id=row["id"],
-                title=(row["title"] or "").strip() or "Untitled session",
-                model_used=row["model_used"],
-                created_at=row["created_at"],
-                messages=messages,
-            )
-        )
-    return sessions
-
-
-def _source_entries(raw: Any) -> list[dict]:
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except (TypeError, ValueError):
-        return []
-    if not isinstance(parsed, list):
-        return []
-    return [item for item in parsed if isinstance(item, dict)]
-
-
 def build(db, user_id: str, project_id: str) -> Snapshot:
     """Reads a project into an export snapshot. Never touches the network."""
     project = db.execute(
@@ -352,8 +246,6 @@ def build(db, user_id: str, project_id: str) -> Snapshot:
     ).fetchall()
 
     papers = [_build_paper(db, user_id, project_id, dict(row)) for row in rows]
-    live_doc_ids = {paper.id for paper in papers}
-    sessions = _build_sessions(db, user_id, project_id, live_doc_ids)
 
     unresolved = []
     if not papers:
@@ -368,27 +260,10 @@ def build(db, user_id: str, project_id: str) -> Snapshot:
         unresolved.append(
             f"{len(unenriched)} paper(s) were never metadata-enriched."
         )
-    deleted = sum(
-        1
-        for session in sessions
-        for message in session.messages
-        for source in message.sources
-        if source.deleted
-    )
-    if deleted:
-        unresolved.append(
-            f"{deleted} citation(s) in saved answers point to documents no longer in this project."
-        )
-
-    model_used = next(
-        (session.model_used for session in reversed(sessions) if session.model_used), None
-    )
 
     return Snapshot(
         project_name=project_name,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
-        model_used=model_used,
         papers=papers,
-        sessions=sessions,
         unresolved=unresolved,
     )

@@ -28,14 +28,22 @@ POST /api/v1/projects/{project_id}/literature/clusters/summary
 
 ## Export
 
+Two resources, each available as Word (`docx`) or Excel (`xlsx`):
+
 ```
-GET /api/v1/projects/{project_id}/export/workbook
-  Response: XLSX binary download (literature workbook, with metadata provenance)
-
 GET /api/v1/projects/{project_id}/export/dossier
-  Query: include_answers? (bool, default false)
-  Response: DOCX binary download (references, paper notes, optional saved answers)
+  Query: format=docx|xlsx (default docx)
+  Response: binary download
+    docx -> cover page, references, paper notes
+    xlsx -> the literature matrix, one row per paper
 
+GET /api/v1/projects/{project_id}/export/references
+  Query: format=docx|xlsx (default docx)
+  Response: binary download — the compiled APA bibliography
+    docx -> hanging-indent list, incomplete entries in their own section
+    xlsx -> one row per reference with Authors/Year/Title/Journal/DOI/APA
+
+Exports contain documents only; saved conversations are never included.
 Both respond with 400 when the project has no papers to export.
 ```
 

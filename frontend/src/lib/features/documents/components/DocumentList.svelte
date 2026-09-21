@@ -15,7 +15,7 @@
     type LiteratureEntry,
   } from '$lib/features/literature/api';
   import type { LiteratureMetadata, MetadataCandidate } from '$lib/features/literature/api';
-  import { exportDossier } from '$lib/features/export/api';
+  import ExportMenu from '$lib/features/export/components/ExportMenu.svelte';
   import { searchPapers } from '$lib/features/literature/api';
   import type { SearchResult } from '$lib/features/search/types';
   import type { Document } from '../types';
@@ -31,7 +31,6 @@
   let selected = $state<Set<string>>(new Set());
   let openMenu = $state<string | null>(null);
   let busy = $state<string | null>(null);
-  let exporting = $state(false);
   let actionError = $state('');
   let actionInfo = $state('');
   let buildJob = $state<LiteratureBuildJob | null>(null);
@@ -370,19 +369,6 @@
     }
   }
 
-  async function handleExportReferences() {
-    if (!projectId) return;
-    exporting = true;
-    clearActionFeedback();
-    try {
-      await exportDossier(projectId);
-    } catch (e) {
-      actionError = e instanceof Error ? e.message : String(e ?? 'Export failed');
-    } finally {
-      exporting = false;
-    }
-  }
-
   async function handleCleanOrphans() {
     if (!projectId) return;
     try {
@@ -583,13 +569,9 @@
       >
         {cleaningOrphans ? 'Cleaning…' : '🧹 Clean Orphaned Indexes'}
       </button>
-      <button
-        onclick={handleExportReferences}
-        disabled={exporting}
-        class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
-      >
-        {exporting ? 'Exporting…' : '⬇ Export project dossier (.docx)'}
-      </button>
+      {#if projectId}
+        <ExportMenu {projectId} />
+      {/if}
     </div>
   </div>
 

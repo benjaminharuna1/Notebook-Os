@@ -1,16 +1,34 @@
+"""Two export resources, each available as Word or Excel.
+
+`/export/dossier` is the project write-up: on Word it is the narrative dossier
+(cover page, references, paper notes); on Excel it is the literature matrix, one
+row per paper.
+
+`/export/references` is the compiled APA bibliography on its own, as a Word
+list or an Excel table.
+
+Exports contain documents only. Saved conversations and answers are deliberately
+not part of any artifact.
+"""
+
 import re
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 
 from app.core.dependencies import get_current_user, get_db
-from app.features.export import dossier, snapshot as snapshot_mod, workbook
+from app.features.export import dossier, references, snapshot as snapshot_mod, workbook
 
 router = APIRouter(tags=["export"])
 
-XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-DOCX_MEDIA = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+ExportFormat = Literal["docx", "xlsx"]
+
+MEDIA_TYPES = {
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+}
 
 
 def _slug(name: str) -> str:
@@ -24,30 +42,39 @@ def _build_snapshot(db, user_id: str, project_id: str):
     return snapshot
 
 
-def _attachment(filename: str) -> dict:
-    return {"Content-Disposition": f'attachment; filename="{filename}"'}
-
-
-@router.get("/projects/{project_id}/export/workbook")
-async def export_workbook(
-    project_id: str,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
-):
-    snapshot = await run_in_threadpool(_build_snapshot, db, current_user["id"], project_id)
-    data = await run_in_threadpool(workbook.render, snapshot)
-    filename = f"literature-mapping-{_slug(snapshot.project_name)}.xlsx"
-    return Response(content=data, media_type=XLSX_MEDIA, headers=_attachment(filename))
+def _respond(data: bytes, export_format: str, stem: str) -> Response:
+    return Response(
+        content=data,
+        media_type=MEDIA_TYPES[export_format],
+        headers={
+            "Content-Disposition": f'attachment; filename="{stem}.{export_format}"'
+        },
+    )
 
 
 @router.get("/projects/{project_id}/export/dossier")
 async def export_dossier(
     project_id: str,
-    include_answers: bool = Query(False),
+    format: ExportFormat = Query("docx"),
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
     snapshot = await run_in_threadpool(_build_snapshot, db, current_user["id"], project_id)
-    data = await run_in_threadpool(dossier.render, snapshot, include_answers)
-    filename = f"{_slug(snapshot.project_name)}-dossier.docx"
-    return Response(content=data, media_type=DOCX_MEDIA, headers=_attachment(filename))
+    if format == "docx":
+        data = await run_in_threadpool(dossier.render, snapshot)
+    else:
+        data = await run_in_threadpool(workbook.render, snapshot)
+    return _respond(data, format, f"{_slug(snapshot.project_name)}-dossier")
+
+
+@router.get("/projects/{project_id}/export/references")
+async def export_references(
+    project_id: str,
+    format: ExportFormat = Query("docx"),
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    snapshot = await run_in_threadpool(_build_snapshot, db, current_user["id"], project_id)
+    render = references.render_docx if format == "docx" else references.render_xlsx
+    data = await run_in_threadpool(render, snapshot)
+    return _respond(data, format, f"{_slug(snapshot.project_name)}-references")
