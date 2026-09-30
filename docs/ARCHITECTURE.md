@@ -7,14 +7,15 @@
 | Document | Lines | What it covers |
 |----------|-------|----------------|
 | [01-architecture-overview.md](docs/01-architecture-overview.md) | ~100 | System diagram, data flow |
-| [02a-backend-structure.md](docs/02a-backend-structure.md) | ~220 | Backend directory tree (15 features) |
-| [02b-frontend-structure.md](docs/02b-frontend-structure.md) | ~120 | Frontend directory tree (12 features) |
+| [02a-backend-structure.md](docs/02a-backend-structure.md) | ~240 | Backend directory tree (16 features) |
+| [02b-frontend-structure.md](docs/02b-frontend-structure.md) | ~128 | Frontend directory tree (13 features) |
 | [03-database-schema.md](docs/03-database-schema.md) | ~190 | All 13 SQLite tables, indexes, ChromaDB |
 | [04a-api-auth-projects.md](docs/04a-api-auth-projects.md) | ~65 | Auth, Projects, Ingestion, Documents endpoints |
 | [04b-api-search-chat-graph.md](docs/04b-api-search-chat-graph.md) | ~65 | Search, Chat, Graph endpoints |
-| [04c-api-literature-models.md](docs/04c-api-literature-models.md) | ~80 | Literature, Models, Skills, Settings, Actions endpoints |
-| [05-current-state.md](docs/05-current-state.md) | ~75 | Implemented features, tech choices, verification |
+| [04c-api-literature-models.md](docs/04c-api-literature-models.md) | ~117 | Literature, Export, Models, Skills, Settings, Actions endpoints |
+| [05-current-state.md](docs/05-current-state.md) | ~94 | Implemented features, tech choices, verification |
 | [06-icm-documentation.md](docs/06-icm-documentation.md) | ~67 | ICM file locations, format, rationale |
+| [07-export-flow.md](docs/07-export-flow.md) | ~223 | Export feature layers, runtime flow, design rules |
 
 ## Summary
 
