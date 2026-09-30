@@ -158,13 +158,13 @@ def test_dossier_xlsx_notes_sheet_carries_provenance_and_missing_columns():
     sheet = _notes_sheet(dossier.render_xlsx(snapshot_mod.build(db, "u1", "proj1")))
 
     headers = [cell.value for cell in sheet[1]]
-    assert "Source" in headers
+    assert "Provenance" in headers
     assert "Missing metadata" in headers
     assert headers.index("DOI") >= 0
 
     rows = {row[0]: row for row in sheet.iter_rows(min_row=2, values_only=True)}
     sourced = rows["Sourced Paper"]
-    assert sourced[headers.index("Source")] == "verified"
+    assert sourced[headers.index("Provenance")] == "verified"
     assert sourced[headers.index("DOI")] == "10.1000/abc"
     assert sourced[headers.index("Missing metadata")] in (None, "")
 
@@ -310,7 +310,7 @@ def test_dossier_never_includes_conversations():
         assert "First pass" not in artifact
 
 
-def test_dossier_references_are_sorted_deduplicated_and_hanging_indented():
+def test_dossier_references_are_sorted_and_hanging_indented():
     db = _db()
     _seed_paper(db, "p1", "Zeta Study", authors=["Zeta, Z."], year=2020)
     _seed_paper(db, "p2", "Alpha Study", authors=["Alpha, A."], year=2021)
@@ -320,7 +320,9 @@ def test_dossier_references_are_sorted_deduplicated_and_hanging_indented():
     snap = snapshot_mod.build(db, "u1", "proj1")
     data = dossier.render_docx(snap)
 
+    # One entry per paper — two identical works are still two papers.
     assert _section(data, "References") == [
+        "Alpha, A. (2021). Alpha Study.",
         "Alpha, A. (2021). Alpha Study.",
         "Zeta, Z. (2020). Zeta Study.",
     ]
@@ -333,7 +335,7 @@ def test_dossier_references_are_sorted_deduplicated_and_hanging_indented():
 # --- references -------------------------------------------------------------
 
 
-def test_references_compile_dedupes_sorts_and_flags_incomplete():
+def test_references_compile_is_one_per_paper_and_sorted():
     db = _db()
     _seed_paper(db, "p1", "Zeta Study", authors=["Zeta, Z."], year=2020)
     _seed_paper(db, "p2", "Alpha Study", authors=["Alpha, A."], year=2021)
@@ -343,7 +345,9 @@ def test_references_compile_dedupes_sorts_and_flags_incomplete():
 
     refs = references.compile(snapshot_mod.build(db, "u1", "proj1"))
 
+    # Four papers, four entries — the two identical works are not collapsed.
     assert [r.apa for r in refs] == [
+        "Alpha, A. (2021). Alpha Study.",
         "Alpha, A. (2021). Alpha Study.",
         "Unattributed Report (n.d.).",
         "Zeta, Z. (2020). Zeta Study.",
@@ -351,7 +355,8 @@ def test_references_compile_dedupes_sorts_and_flags_incomplete():
     by_title = {r.title: r for r in refs}
     assert by_title["Alpha Study"].complete is True
     assert by_title["Unattributed Report"].complete is False
-    assert by_title["Unattributed Report"].authors == snapshot_mod.AUTHOR_UNKNOWN
+    assert by_title["Unattributed Report"].fields["authors"] == references.UNKNOWN_AUTHOR
+    assert by_title["Unattributed Report"].fields["year"] == references.NO_DATE
     assert "authors" in by_title["Unattributed Report"].missing_fields
 
 
@@ -445,12 +450,122 @@ def test_references_xlsx_lists_every_reference_with_its_gaps():
 
     complete = rows["Complete Paper"]
     assert complete[headers.index("DOI")] == "10.1000/abc"
-    assert complete[headers.index("Source")] == "verified"
+    assert complete[headers.index("Source")] == "Journal of Things"
+    assert complete[headers.index("Provenance")] == "verified"
     assert complete[headers.index("Missing metadata")] in (None, "")
 
     incomplete = rows["Incomplete Paper"]
-    assert incomplete[headers.index("Authors")] == snapshot_mod.AUTHOR_UNKNOWN
+    assert incomplete[headers.index("Authors")] == references.UNKNOWN_AUTHOR
     assert "authors" in incomplete[headers.index("Missing metadata")]
+
+
+def _ris_records(text: str) -> list[list[str]]:
+    """The RIS records, with the leading `#` header lines ignored."""
+    records: list[list[str]] = []
+    current: list[str] = []
+    for line in text.splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        current.append(line)
+        if line.startswith("ER  -"):
+            records.append(current)
+            current = []
+    return records
+
+
+def _ris_tags(record: list[str]) -> list[str]:
+    # Splits "TY  - JOUR" and the terminator "ER  -" alike.
+    return [line.split("  -", 1)[0] for line in record]
+
+
+def test_ris_lists_one_record_per_paper_in_a_consistent_field_order():
+    db = _db()
+    _seed_paper(db, "p1", "Alpha Study", authors=["Alpha, A.", "Beta, B."], year=2021,
+                journal="Journal of Things", doi="10.1000/abc", verification_status="verified")
+    _seed_paper(db, "p2", "Zeta Study", authors=["Zeta, Z."], year=2020)
+    _seed_paper(db, "p3", "Zeta Study", authors=["Zeta, Z."], year=2020)
+    db.commit()
+
+    records = _ris_records(
+        references.render_ris(snapshot_mod.build(db, "u1", "proj1")).decode("utf-8")
+    )
+
+    # Three papers, three records — the duplicate pair is not collapsed.
+    assert len(records) == 3
+    # Same field order in every entry; the optional DOI line is the only difference.
+    assert _ris_tags(records[0]) == ["TY", "AU", "AU", "PY", "TI", "JO", "DO", "ER"]
+    assert _ris_tags(records[1]) == ["TY", "AU", "PY", "TI", "JO", "ER"]
+    assert _ris_tags(records[2]) == ["TY", "AU", "PY", "TI", "JO", "ER"]
+    assert records[0] == [
+        "TY  - JOUR",
+        "AU  - Alpha, A.",
+        "AU  - Beta, B.",
+        "PY  - 2021",
+        "TI  - Alpha Study",
+        "JO  - Journal of Things",
+        "DO  - 10.1000/abc",
+        "ER  -",
+    ]
+
+
+def test_ris_marks_every_missing_field_with_a_placeholder():
+    db = _db()
+    _seed_paper(db, "p1", "Only Paper", authors=None, year=None)
+    db.commit()
+
+    text = references.render_ris(snapshot_mod.build(db, "u1", "proj1")).decode("utf-8")
+
+    assert "AU  - Unknown author" in text
+    assert "PY  - No date" in text
+    assert "TI  - Only Paper" in text
+    assert "JO  - Unknown source" in text
+    # A missing DOI is omitted rather than written out, because a reference
+    # manager would store the placeholder as a literal DOI.
+    assert "DO  - " not in text
+
+
+def test_reference_sheet_cells_are_never_blank():
+    db = _db()
+    _seed_paper(db, "p1", "Only Paper", authors=None, year=None)
+    db.commit()
+
+    data = references.render_xlsx(snapshot_mod.build(db, "u1", "proj1"))
+    sheet = load_workbook(BytesIO(data))[references.REFERENCES_SHEET]
+    headers = [c.value for c in sheet[1]]
+    row = dict(zip(headers, next(sheet.iter_rows(min_row=2, values_only=True))))
+
+    for column in ("Authors", "Year", "Title", "Source", "DOI"):
+        assert row[column], f"{column} was blank"
+    assert row["Authors"] == references.UNKNOWN_AUTHOR
+    assert row["Year"] == references.NO_DATE
+    assert row["Source"] == references.UNKNOWN_SOURCE
+    assert row["DOI"] == references.NO_DOI
+
+
+def test_every_reference_file_states_project_date_and_entry_count():
+    db = _db()
+    _seed_paper(db, "p1", "Alpha Study", authors=["Alpha, A."], year=2021)
+    _seed_paper(db, "p2", "Beta Study", authors=["Beta, B."], year=2022)
+    db.commit()
+    snap = snapshot_mod.build(db, "u1", "proj1")
+
+    ris = references.render_ris(snap).decode("utf-8")
+    assert "# Project: My Thesis" in ris
+    assert f"# Generated: {snap.generated_at}" in ris
+    assert "# Entries: 2" in ris
+
+    words = "\n".join(_paragraphs(references.render_docx(snap)))
+    assert "My Thesis" in words
+    assert f"Generated {snap.generated_at} · 2 entries" in words
+
+    workbook = load_workbook(BytesIO(references.render_xlsx(snap)))
+    summary = {
+        row[0]: row[1]
+        for row in workbook[references.SUMMARY_SHEET].iter_rows(min_row=2, values_only=True)
+    }
+    assert summary == {"Project": "My Thesis", "Generated": snap.generated_at, "Entries": 2}
+    # The entries stay on their own sheet, so the data is still a clean table.
+    assert workbook.sheetnames == [references.REFERENCES_SHEET, references.SUMMARY_SHEET]
 
 
 # --- router: the resource x format matrix -----------------------------------
@@ -511,17 +626,34 @@ def test_router_dossier_xlsx_is_the_dossier_not_a_bare_matrix():
     ]
     headers = [c.value for c in workbook[dossier.NOTES_SHEET][1]]
     assert headers[0] == "Paper Title"
-    assert "Source" in headers
+    assert "Provenance" in headers
 
 
 def test_router_refuses_project_without_papers():
     db = _db()
     db.commit()
 
-    try:
-        _call(router.export_references("proj1", "docx", {"id": "u1"}, db))
-    except HTTPException as exc:
-        assert exc.status_code == 400
-        assert "no papers" in exc.detail
-    else:
-        raise AssertionError("expected an HTTPException for a project with no papers")
+    for export_format in ("ris", "docx", "xlsx"):
+        try:
+            _call(router.export_references("proj1", export_format, {"id": "u1"}, db))
+        except HTTPException as exc:
+            assert exc.status_code == 400
+            assert "no papers" in exc.detail
+        else:
+            raise AssertionError(f"expected a 400 for format={export_format}, got a file")
+
+
+def test_router_serves_references_as_ris():
+    db = _db()
+    _seed_paper(db, "p1", "Alpha Study", authors=["Alpha, A."], year=2021)
+    db.commit()
+
+    response = _call(router.export_references("proj1", "ris", {"id": "u1"}, db))
+
+    assert response.media_type == "application/x-research-info-systems"
+    assert response.headers["content-disposition"] == (
+        'attachment; filename="my-thesis-references.ris"'
+    )
+    text = response.body.decode("utf-8")
+    assert text.count("TY  - ") == 1
+    assert text.count("ER  -") == 1

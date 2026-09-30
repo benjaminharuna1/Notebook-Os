@@ -25,12 +25,19 @@ CPU-bound rendering is pushed off the event loop with `run_in_threadpool` (as `m
 
 ## Outputs
 
-Two resources, each available as Word or Excel:
+Two resources:
 
-| Resource | `format=docx` | `format=xlsx` |
+| Resource | Formats | What you get |
 |---|---|---|
-| **dossier** | Cover page stating what is missing, references, paper notes | Three sheets — `Summary`, `Paper notes`, `References` — mirroring those sections |
-| **references** | The compiled APA bibliography, complete entries first, in a hanging-indent list | One row per reference with Authors/Year/Title/Journal/DOI/APA + its gaps |
+| **dossier** | `docx`, `xlsx` | `docx`: cover page stating what is missing, references, paper notes. `xlsx`: three sheets — `Summary`, `Paper notes`, `References` |
+| **references** | `ris`, `docx`, `xlsx` | `ris`: one RIS record per paper, for import into a reference manager. `docx`: the APA list. `xlsx`: one row per reference on a `References` sheet, plus a `Summary` sheet |
+
+`references.compile()` produces **one entry per paper — never fewer** — sorted alphabetically, so a
+project of N papers exports N entries even when two of them describe the same work. Papers the app
+could not enrich are included too, with their gaps marked.
+
+Every reference file states what it contains: the project, the date it was generated and the entry
+count (`#` header lines in RIS, a line under the title in Word, a `Summary` sheet in Excel).
 
 Plus the shared `Snapshot` dataclass tree — papers + provenance and the unresolved list.
 
@@ -43,15 +50,28 @@ sheet layout, both used by the standalone export and the dossier alike.
 | File | Purpose |
 |---|---|
 | `snapshot.py` | Snapshot assembly + every honesty rule |
-| `references.py` | APA bibliography: `compile`, `table`, and both renderers |
+| `references.py` | APA bibliography: `compile` (one entry per paper), `table`, and the ris/docx/xlsx renderers |
 | `dossier.py` | `render_docx` + `render_xlsx` for the project write-up |
 | `sheets.py` | Shared openpyxl sheet formatting |
-| `router.py` | Two GET endpoints, `?format=docx\|xlsx`, returning a binary attachment |
+| `router.py` | Two GET endpoints, `?format=`, returning a binary attachment |
 
 ## Honesty rules (the point of this feature)
 
-- A paper with no recorded author exports as `(author unknown)`, never as a fabricated
-  `Title, n.d.` citation.
+- A paper with no recorded author exports as `(author unknown)` in a citation, never as a fabricated
+  `Title, n.d.`.
+- **A missing attribution field is never silently blank.** Each carries an explicit placeholder, from
+  one definition on `Reference.fields` so RIS, Word and Excel cannot word a gap differently:
+
+  | Field | Placeholder |
+  |---|---|
+  | authors | `Unknown author` |
+  | year | `No date` |
+  | title | `Untitled` |
+  | source (venue) | `Unknown source` |
+  | doi | `No DOI` |
+
+  The one exception is RIS: a missing DOI omits the `DO` line entirely, because a reference manager
+  would store `No DOI` as a literal DOI and corrupt the record.
 - Every title is title-cased once, in the snapshot, via `core.titles.title_case` — standard Title
   Case, with a title written entirely in caps repaired rather than published. The reference list, the
   title column and the reading notes all read that one string. A title already embedded in a stored

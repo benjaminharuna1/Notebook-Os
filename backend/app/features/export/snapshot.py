@@ -105,6 +105,7 @@ class Paper:
     year: Optional[int]
     doi: Optional[str]
     journal: Optional[str]
+    paper_type: Optional[str]
     volume: Optional[str]
     issue: Optional[str]
     pages: Optional[str]
@@ -224,6 +225,7 @@ def _build_paper(db, user_id: str, project_id: str, row: dict) -> Paper:
         year=row.get("year"),
         doi=row.get("doi"),
         journal=row.get("journal"),
+        paper_type=row.get("paper_type"),
         volume=row.get("volume"),
         issue=row.get("issue"),
         pages=row.get("pages"),

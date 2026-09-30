@@ -2,8 +2,7 @@
 
 `dossier` is the project write-up: a summary of what is missing, the compiled
 APA bibliography, and the per-paper notes. `references` is that bibliography on
-its own. Each resource module exposes `render_docx` and `render_xlsx`, so the
-dispatch below is identical for both.
+its own, as RIS (for a reference manager), Word or Excel.
 
 Exports contain documents only. Saved conversations and answers are deliberately
 not part of any artifact.
@@ -22,10 +21,13 @@ from app.features.export import dossier, references, snapshot as snapshot_mod
 router = APIRouter(tags=["export"])
 
 ExportFormat = Literal["docx", "xlsx"]
+# The reference list also comes as RIS, the format a reference manager imports.
+ReferenceFormat = Literal["docx", "xlsx", "ris"]
 
 MEDIA_TYPES = {
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "ris": "application/x-research-info-systems",
 }
 
 
@@ -66,11 +68,15 @@ async def export_dossier(
 @router.get("/projects/{project_id}/export/references")
 async def export_references(
     project_id: str,
-    format: ExportFormat = Query("docx"),
+    format: ReferenceFormat = Query("ris"),
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
     snapshot = await run_in_threadpool(_build_snapshot, db, current_user["id"], project_id)
-    render = references.render_docx if format == "docx" else references.render_xlsx
+    render = {
+        "ris": references.render_ris,
+        "docx": references.render_docx,
+        "xlsx": references.render_xlsx,
+    }[format]
     data = await run_in_threadpool(render, snapshot)
     return _respond(data, format, f"{_slug(snapshot.project_name)}-references")

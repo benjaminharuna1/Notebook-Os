@@ -51,7 +51,7 @@ _MATRIX_HEADERS = [
     "DOI",
     "Journal",
     "Missing metadata",
-    "Source",
+    "Provenance",
 ]
 
 _MATRIX_WIDTHS = [42, 22, 46, 42, 46, 42, 42, 52, 28, 8, 24, 26, 24, 16]
@@ -143,7 +143,7 @@ def _add_paper_notes(document, snapshot) -> None:
     for paper in snapshot.papers:
         document.add_heading(paper.title or paper.filename, level=2)
         meta = document.add_paragraph()
-        meta.add_run(f"{paper.citation} · source: {paper.provenance}").italic = True
+        meta.add_run(f"{paper.citation} · provenance: {paper.provenance}").italic = True
 
         entry = paper.entry.values if paper.entry else {}
         for key, label in _ENTRY_LABELS:

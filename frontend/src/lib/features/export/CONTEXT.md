@@ -1,21 +1,23 @@
 # Export Feature Contract
 
-Exporting a project out of the app — two resources, each in Word or Excel.
+Exporting a project out of the app — two resources, each in the formats that suit it.
 
 ## What it does
 
 Provides one `ExportMenu` mounted on the **Literature** page and the **Library** page (via
-`DocumentList`), replacing the single-format export buttons that used to sit on each. It offers two
-resources, each with a Word and an Excel button:
+`DocumentList`), replacing the single-format export buttons that used to sit on each. Each option
+carries its own list of formats:
 
-| Resource | Word | Excel |
+| Resource | Formats | What she gets |
 |---|---|---|
-| **Dossier** | Cover page, references and paper notes | The literature matrix, one row per paper |
-| **References** | The compiled APA bibliography | One row per reference, with its gaps |
+| **Dossier** | Word, Excel | Cover page, references and paper notes / the literature matrix, one row per paper |
+| **References** | RIS, Word, Excel | RIS records for Zotero/Mendeley/EndNote / the APA bibliography / one row per reference with its gaps |
+
+RIS is offered for references only — it is the format a reference manager imports.
 
 Conversations and answers are not part of any export.
 
-Both downloads go through the shared `downloadFile()` helper in `core/api/client.ts`, so auth
+All downloads go through the shared `downloadFile()` helper in `core/api/client.ts`, so auth
 headers, the 401 redirect, and the `Content-Disposition` filename are handled in one place.
 
 ## API endpoints called
@@ -23,7 +25,7 @@ headers, the 401 redirect, and the `Content-Disposition` filename are handled in
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/projects/{id}/export/dossier?format=docx\|xlsx` | GET | Dossier |
-| `/projects/{id}/export/references?format=docx\|xlsx` | GET | Compiled APA bibliography |
+| `/projects/{id}/export/references?format=ris\|docx\|xlsx` | GET | Reference list (RIS by default) |
 
 ## State managed
 

@@ -7,17 +7,25 @@
   let open = $state(false);
   let busy = $state('');
 
+  const LABELS: Record<ExportFormat, string> = {
+    ris: 'RIS',
+    docx: 'Word',
+    xlsx: 'Excel',
+  };
+
   const options = [
     {
       key: 'dossier',
       label: 'Dossier',
       hint: 'Cover page, references and paper notes. Excel gives one row per paper.',
-      run: (format: ExportFormat) => exportDossier(projectId, format),
+      formats: ['docx', 'xlsx'] as ExportFormat[],
+      run: (format: ExportFormat) => exportDossier(projectId, format as 'docx' | 'xlsx'),
     },
     {
       key: 'references',
       label: 'References',
-      hint: 'The compiled APA bibliography on its own, alphabetised and de-duplicated.',
+      hint: 'One entry per paper — RIS imports into Zotero, Mendeley or EndNote.',
+      formats: ['ris', 'docx', 'xlsx'] as ExportFormat[],
       run: (format: ExportFormat) => exportReferences(projectId, format),
     },
   ];
@@ -64,7 +72,7 @@
         <path d="M9.5 1.5v4h4" />
         <path d="M5.5 9h5M5.5 11.5h5" />
       </svg>
-    {:else}
+    {:else if format === 'xlsx'}
       <svg
         viewBox="0 0 16 16"
         class="h-3.5 w-3.5"
@@ -76,6 +84,24 @@
       >
         <rect x="2" y="3" width="12" height="10" rx="1" />
         <path d="M2 6.5h12M6.5 3v10" />
+      </svg>
+    {:else}
+      <svg
+        viewBox="0 0 16 16"
+        class="h-3.5 w-3.5"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path
+          d="M6 2.5c-1.4 0-1.8.7-1.8 2v1.2c0 1.2-.4 1.6-1.2 1.8.8.2 1.2.6 1.2 1.8v1.2c0 1.3.4 2 1.8 2"
+        />
+        <path
+          d="M10 2.5c1.4 0 1.8.7 1.8 2v1.2c0 1.2.4 1.6 1.2 1.8-.8.2-1.2.6-1.2 1.8v1.2c0 1.3-.4 2-1.8 2"
+        />
       </svg>
     {/if}
     {label}
@@ -114,8 +140,9 @@
           <p class="text-sm font-medium text-slate-800">{option.label}</p>
           <p class="mb-2 text-xs text-slate-500">{option.hint}</p>
           <div class="flex gap-2">
-            {@render formatButton(option.key, 'docx', 'Word')}
-            {@render formatButton(option.key, 'xlsx', 'Excel')}
+            {#each option.formats as format (format)}
+              {@render formatButton(option.key, format, LABELS[format])}
+            {/each}
           </div>
         </div>
       {/each}
