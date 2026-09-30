@@ -557,7 +557,7 @@ def test_extract_paper_metadata_title_is_title_cased():
     ):
         fields = llm.extract_paper_metadata("u1", "The first page of text", "farming.pdf")
 
-    assert fields["title"] == "Deep Learning For Crop Yield Prediction"
+    assert fields["title"] == "Deep Learning for Crop Yield Prediction"
 
 
 def test_paper_chunks_evenly_samples_full_document():

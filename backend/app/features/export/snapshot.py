@@ -16,6 +16,7 @@ from typing import Any, Optional
 
 from app.core import citations
 from app.core.papers import authors_from_row
+from app.core.titles import title_case
 
 # --- placeholders -----------------------------------------------------------
 #
@@ -176,12 +177,34 @@ def _build_entry(db, user_id: str, project_id: str, paper_id: str) -> Optional[E
     return Entry(values=values)
 
 
+def _repair_reference_title(apa: str) -> str:
+    """Title-cases the title embedded in an already-stored APA reference.
+
+    A reference saved while the paper's title was in caps would otherwise keep
+    shouting forever, so the title is extracted, normalised and swapped back.
+    References whose title cannot be isolated are returned untouched.
+    """
+    stored = citations.title_from_apa(apa)
+    if not stored:
+        return apa
+    repaired = title_case(stored)
+    if not repaired or repaired == stored:
+        return apa
+    return apa.replace(stored, repaired, 1)
+
+
 def _build_paper(db, user_id: str, project_id: str, row: dict) -> Paper:
     authors = authors_from_row(row)
+    # One title per paper, capitalised once, so the reference list, the title
+    # column and the reading notes cannot disagree.
+    title = (title_case(row.get("title")) or "").strip()
+    paper = {**row, "title": title, "authors": authors}
 
     apa = (row.get("apa_reference") or "").strip()
-    if not apa:
-        apa = citations.apa_reference({**row, "authors": authors})
+    if apa:
+        apa = _repair_reference_title(apa)
+    else:
+        apa = citations.apa_reference(paper)
 
     missing = []
     if not authors:
@@ -195,7 +218,7 @@ def _build_paper(db, user_id: str, project_id: str, row: dict) -> Paper:
 
     return Paper(
         id=row["id"],
-        title=(row.get("title") or "").strip(),
+        title=title,
         filename=(row.get("filename") or "").strip(),
         authors=authors,
         year=row.get("year"),
@@ -209,7 +232,7 @@ def _build_paper(db, user_id: str, project_id: str, row: dict) -> Paper:
         abstract=row.get("abstract"),
         verification_status=row.get("verification_status"),
         metadata_user_edited=bool(row.get("metadata_user_edited")),
-        citation=_citation_label({**row, "authors": authors}),
+        citation=_citation_label(paper),
         apa_reference=apa,
         provenance=_provenance(row),
         missing_fields=missing,

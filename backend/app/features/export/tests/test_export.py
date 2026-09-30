@@ -93,7 +93,7 @@ def test_provenance_reflects_verification_and_user_edits():
                 verification_status="verified")
     _seed_paper(db, "p2", "Guessed", authors=["Doe, J."], year=2021,
                 verification_status="ai")
-    _seed_paper(db, "p3", "Hand-edited", authors=["Roe, J."], year=2022,
+    _seed_paper(db, "p3", "Hand Edited", authors=["Roe, J."], year=2022,
                 metadata_user_edited=1)
     _seed_paper(db, "p4", "Untouched", authors=["Poe, J."], year=2023)
     db.commit()
@@ -102,16 +102,16 @@ def test_provenance_reflects_verification_and_user_edits():
 
     assert by_title["Verified"].provenance == "verified"
     assert by_title["Guessed"].provenance == "ai-suggested"
-    assert by_title["Hand-edited"].provenance == "edited by you"
+    assert by_title["Hand Edited"].provenance == "edited by you"
     assert by_title["Untouched"].provenance == snapshot_mod.UNENRICHED
 
 
 def test_three_blank_states_are_distinguished():
     db = _db()
-    _seed_paper(db, "p1", "No entry row", authors=["A, A."], year=2020)
-    _seed_paper(db, "p2", "Auto generated", authors=["B, B."], year=2021)
-    _seed_paper(db, "p3", "User cleared", authors=["C, C."], year=2022)
-    _seed_paper(db, "p4", "Plain empty", authors=["D, D."], year=2023)
+    _seed_paper(db, "p1", "No Entry Row", authors=["A, A."], year=2020)
+    _seed_paper(db, "p2", "Auto Generated", authors=["B, B."], year=2021)
+    _seed_paper(db, "p3", "User Cleared", authors=["C, C."], year=2022)
+    _seed_paper(db, "p4", "Plain Empty", authors=["D, D."], year=2023)
     db.commit()
 
     _seed_entry(db, "p2", auto_generated=1, key_findings="")
@@ -121,10 +121,10 @@ def test_three_blank_states_are_distinguished():
 
     by_title = {p.title: p for p in snapshot_mod.build(db, "u1", "proj1").papers}
 
-    assert by_title["No entry row"].entry is None
-    assert by_title["Auto generated"].entry.values["key_findings"] == snapshot_mod.NOT_GENERATED
-    assert by_title["User cleared"].entry.values["key_findings"] == snapshot_mod.CLEARED_BY_YOU
-    assert by_title["Plain empty"].entry.values["key_findings"] == snapshot_mod.EMPTY
+    assert by_title["No Entry Row"].entry is None
+    assert by_title["Auto Generated"].entry.values["key_findings"] == snapshot_mod.NOT_GENERATED
+    assert by_title["User Cleared"].entry.values["key_findings"] == snapshot_mod.CLEARED_BY_YOU
+    assert by_title["Plain Empty"].entry.values["key_findings"] == snapshot_mod.EMPTY
 
 
 def test_snapshot_is_scoped_and_ordered_by_title():
@@ -353,6 +353,42 @@ def test_references_compile_dedupes_sorts_and_flags_incomplete():
     assert by_title["Unattributed Report"].complete is False
     assert by_title["Unattributed Report"].authors == snapshot_mod.AUTHOR_UNKNOWN
     assert "authors" in by_title["Unattributed Report"].missing_fields
+
+
+def test_references_repair_an_all_caps_title():
+    db = _db()
+    _seed_paper(db, "p1", "DEEP LEARNING FOR CROP YIELD PREDICTION",
+                authors=["Smith, J."], year=2020, verification_status="verified")
+    db.commit()
+
+    snap = snapshot_mod.build(db, "u1", "proj1")
+    (paper,) = snap.papers
+    (ref,) = references.compile(snap)
+
+    # The title is normalised once, so the notes, the Title column and the
+    # reference all read the same.
+    assert paper.title == "Deep Learning for Crop Yield Prediction"
+    assert ref.title == "Deep Learning for Crop Yield Prediction"
+    assert ref.apa == "Smith, J. (2020). Deep Learning for Crop Yield Prediction."
+
+    sheet = load_workbook(BytesIO(references.render_xlsx(snap))).active
+    headers = [c.value for c in sheet[1]]
+    row = next(sheet.iter_rows(min_row=2, values_only=True))
+    assert row[headers.index("Title")] == "Deep Learning for Crop Yield Prediction"
+    assert row[headers.index("APA Reference")] == ref.apa
+
+
+def test_references_repair_a_shouting_title_already_stored_in_the_reference():
+    db = _db()
+    _seed_paper(db, "p1", "DEEP LEARNING FOR CROPS", authors=["Smith, J."], year=2020,
+                apa_reference="Smith, J. (2020). DEEP LEARNING FOR CROPS. JOURNAL OF THINGS.")
+    db.commit()
+
+    (ref,) = references.compile(snapshot_mod.build(db, "u1", "proj1"))
+
+    # The embedded title is repaired; the rest of the stored reference, and the
+    # journal, are left exactly as they were.
+    assert ref.apa == "Smith, J. (2020). Deep Learning for Crops. JOURNAL OF THINGS."
 
 
 def test_references_docx_keeps_incomplete_entries_in_their_own_section():

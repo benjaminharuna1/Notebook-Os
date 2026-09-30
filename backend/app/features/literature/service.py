@@ -8,6 +8,7 @@ from rapidfuzz import fuzz
 
 from app.core import citations
 from app.core.papers import authors_from_row
+from app.core.titles import title_case
 from app.features.embedding.providers.factory import resolve_embedding_provider
 from app.features.graph.builder import layout_nodes
 from app.features.literature import metadata as metadata_sources
@@ -16,7 +17,6 @@ from app.features.literature.metadata import (
     extract_doi,
     extract_year,
     heuristic_title,
-    title_case,
 )
 from app.features.literature.schemas import ClusterInfo, LiteratureMapResponse, PaperEdge, PaperNode
 from app.features.settings.service import SettingsService

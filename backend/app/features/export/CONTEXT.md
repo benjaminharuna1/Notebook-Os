@@ -52,6 +52,10 @@ sheet layout, both used by the standalone export and the dossier alike.
 
 - A paper with no recorded author exports as `(author unknown)`, never as a fabricated
   `Title, n.d.` citation.
+- Every title is title-cased once, in the snapshot, via `core.titles.title_case` — standard Title
+  Case, with a title written entirely in caps repaired rather than published. The reference list, the
+  title column and the reading notes all read that one string. A title already embedded in a stored
+  reference is repaired in place. Journal / venue names are left as stored.
 - Provenance (`verified` / `ai-suggested` / `edited by you` / `never enriched`) is a column, from
   `verification_status` and `metadata_user_edited`.
 - The three blank states are distinguished: `not generated yet`, `empty`, `cleared by you`.
@@ -67,6 +71,8 @@ sheet layout, both used by the standalone export and the dossier alike.
 `app.core.citations` — the single definition of the in-text citation and APA 7th-edition reference
 (shared with `literature`). `app.core.papers.authors_from_row` — the single definition of how a
 `documents` row yields authors (also shared with `literature`, so the two cannot drift).
+`app.core.titles.title_case` — the single definition of title capitalisation (also used by
+`literature` when it stores enriched metadata).
 `documents`/`literature_entries` columns added by the literature feature's migrations are detected
 via `PRAGMA table_info`, so a project that never opened the literature page still exports.
 

@@ -4,7 +4,7 @@ import re
 from typing import List, Optional, Tuple
 
 from app.core import citations
-from app.features.literature.metadata import title_case
+from app.core.titles import title_case
 from app.features.models.service import ModelService
 
 ENTRY_KEYS = ("research_objective", "methodology", "key_findings", "limitations", "relevance")
