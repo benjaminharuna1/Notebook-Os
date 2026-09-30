@@ -9,10 +9,8 @@ from dataclasses import dataclass
 from io import BytesIO
 
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
 
-from app.features.export import snapshot as snapshot_mod
+from app.features.export import sheets, snapshot as snapshot_mod
 
 HEADERS = [
     "Authors",
@@ -78,6 +76,27 @@ def compile(snapshot) -> list[Reference]:
     return [seen[apa] for apa in sorted(seen, key=str.lower)]
 
 
+def table(refs: list[Reference]) -> list[list]:
+    """The bibliography as sheet rows.
+
+    Single definition, used both by the references workbook and by the dossier's
+    References sheet, so the two can never lay out the same reference differently.
+    """
+    return [
+        [
+            ref.authors,
+            ref.year,
+            ref.title,
+            ref.journal,
+            ref.doi,
+            ref.apa,
+            ", ".join(ref.missing_fields),
+            ref.provenance,
+        ]
+        for ref in refs
+    ]
+
+
 def render_docx(snapshot) -> bytes:
     from docx import Document
     from docx.shared import Pt
@@ -125,42 +144,10 @@ def render_docx(snapshot) -> bytes:
 
 
 def render_xlsx(snapshot) -> bytes:
-    refs = compile(snapshot)
-
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "References"
-    sheet.append(HEADERS)
-
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill("solid", fgColor="4F46E5")
-    for col, width in enumerate(WIDTHS, start=1):
-        cell = sheet.cell(row=1, column=col)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(vertical="center")
-        sheet.column_dimensions[get_column_letter(col)].width = width
-    sheet.freeze_panes = "A2"
-
-    for ref in refs:
-        sheet.append(
-            [
-                ref.authors,
-                ref.year,
-                ref.title,
-                ref.journal,
-                ref.doi,
-                ref.apa,
-                ", ".join(ref.missing_fields) if ref.missing_fields else "",
-                ref.provenance,
-            ]
-        )
-
-    for row_index in range(2, sheet.max_row + 1):
-        for col_index in range(1, len(HEADERS) + 1):
-            sheet.cell(row=row_index, column=col_index).alignment = Alignment(
-                wrap_text=True, vertical="top"
-            )
+    sheets.write_sheet(sheet, HEADERS, WIDTHS, table(compile(snapshot)))
 
     buffer = BytesIO()
     workbook.save(buffer)

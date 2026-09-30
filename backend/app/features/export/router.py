@@ -1,11 +1,9 @@
 """Two export resources, each available as Word or Excel.
 
-`/export/dossier` is the project write-up: on Word it is the narrative dossier
-(cover page, references, paper notes); on Excel it is the literature matrix, one
-row per paper.
-
-`/export/references` is the compiled APA bibliography on its own, as a Word
-list or an Excel table.
+`dossier` is the project write-up: a summary of what is missing, the compiled
+APA bibliography, and the per-paper notes. `references` is that bibliography on
+its own. Each resource module exposes `render_docx` and `render_xlsx`, so the
+dispatch below is identical for both.
 
 Exports contain documents only. Saved conversations and answers are deliberately
 not part of any artifact.
@@ -19,7 +17,7 @@ from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 
 from app.core.dependencies import get_current_user, get_db
-from app.features.export import dossier, references, snapshot as snapshot_mod, workbook
+from app.features.export import dossier, references, snapshot as snapshot_mod
 
 router = APIRouter(tags=["export"])
 
@@ -60,10 +58,8 @@ async def export_dossier(
     db=Depends(get_db),
 ):
     snapshot = await run_in_threadpool(_build_snapshot, db, current_user["id"], project_id)
-    if format == "docx":
-        data = await run_in_threadpool(dossier.render, snapshot)
-    else:
-        data = await run_in_threadpool(workbook.render, snapshot)
+    render = dossier.render_docx if format == "docx" else dossier.render_xlsx
+    data = await run_in_threadpool(render, snapshot)
     return _respond(data, format, f"{_slug(snapshot.project_name)}-dossier")
 
 

@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from app.core import citations
+from app.core.papers import authors_from_row
 
 # --- placeholders -----------------------------------------------------------
 #
@@ -77,16 +78,6 @@ def _has_table(db, table: str) -> bool:
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
     ).fetchone()
     return row is not None
-
-
-def _parse_authors(raw: Any) -> list[str]:
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except (TypeError, ValueError):
-        return []
-    return [str(a) for a in parsed] if isinstance(parsed, list) else []
 
 
 def _parse_json_list(raw: Any) -> list[str]:
@@ -186,9 +177,7 @@ def _build_entry(db, user_id: str, project_id: str, paper_id: str) -> Optional[E
 
 
 def _build_paper(db, user_id: str, project_id: str, row: dict) -> Paper:
-    authors = _parse_authors(row.get("authors"))
-    if not authors and row.get("author"):
-        authors = [a.strip() for a in str(row["author"]).replace(";", ",").split(",") if a.strip()]
+    authors = authors_from_row(row)
 
     apa = (row.get("apa_reference") or "").strip()
     if not apa:

@@ -7,7 +7,7 @@ from docx import Document
 from fastapi import HTTPException
 from openpyxl import load_workbook
 
-from app.features.export import dossier, references, router, snapshot as snapshot_mod, workbook
+from app.features.export import dossier, references, router, snapshot as snapshot_mod
 
 _SCHEMA = """
 CREATE TABLE projects (id TEXT PRIMARY KEY, user_id TEXT, name TEXT);
@@ -140,10 +140,14 @@ def test_snapshot_is_scoped_and_ordered_by_title():
     assert [p.title for p in snap.papers] == ["Alpha", "Zeta"]
 
 
-# --- workbook ---------------------------------------------------------------
+# --- dossier: xlsx ----------------------------------------------------------
 
 
-def test_workbook_carries_provenance_and_missing_columns():
+def _notes_sheet(data: bytes):
+    return load_workbook(BytesIO(data))[dossier.NOTES_SHEET]
+
+
+def test_dossier_xlsx_notes_sheet_carries_provenance_and_missing_columns():
     db = _db()
     _seed_paper(db, "p1", "Sourced Paper", authors=["Smith, J."], year=2020,
                 doi="10.1000/abc", journal="Journal of Things",
@@ -151,8 +155,7 @@ def test_workbook_carries_provenance_and_missing_columns():
     _seed_paper(db, "p2", "Unsourced Paper", authors=None, year=None)
     db.commit()
 
-    data = workbook.render(snapshot_mod.build(db, "u1", "proj1"))
-    sheet = load_workbook(BytesIO(data)).active
+    sheet = _notes_sheet(dossier.render_xlsx(snapshot_mod.build(db, "u1", "proj1")))
 
     headers = [cell.value for cell in sheet[1]]
     assert "Source" in headers
@@ -172,13 +175,13 @@ def test_workbook_carries_provenance_and_missing_columns():
     assert unsourced[headers.index("Year")] is None
 
 
-def test_workbook_keeps_the_historical_column_order():
+def test_dossier_xlsx_notes_sheet_keeps_the_historical_column_order():
     db = _db()
     _seed_paper(db, "p1", "Sourced Paper", authors=["Smith, J."], year=2020)
     db.commit()
 
-    data = workbook.render(snapshot_mod.build(db, "u1", "proj1"))
-    headers = [cell.value for cell in load_workbook(BytesIO(data)).active[1]]
+    sheet = _notes_sheet(dossier.render_xlsx(snapshot_mod.build(db, "u1", "proj1")))
+    headers = [cell.value for cell in sheet[1]]
 
     assert headers[:8] == [
         "Paper Title",
@@ -190,6 +193,42 @@ def test_workbook_keeps_the_historical_column_order():
         "Relevance / Contribution",
         "APA Reference",
     ]
+
+
+def test_dossier_carries_the_same_sections_in_both_formats():
+    db = _db()
+    _seed_paper(db, "p1", "Complete Paper", authors=["Smith, J."], year=2020,
+                verification_status="verified")
+    _seed_paper(db, "p2", "Incomplete Paper", authors=None, year=None)
+    db.commit()
+
+    snap = snapshot_mod.build(db, "u1", "proj1")
+    workbook = load_workbook(BytesIO(dossier.render_xlsx(snap)))
+    words = "\n".join(_paragraphs(dossier.render_docx(snap)))
+
+    assert workbook.sheetnames == [
+        dossier.SUMMARY_SHEET,
+        dossier.NOTES_SHEET,
+        dossier.REFERENCES_SHEET,
+    ]
+    # Section 1 — the same unresolved notice as the Word cover page.
+    summary = [row[1] for row in workbook[dossier.SUMMARY_SHEET].iter_rows(min_row=2, values_only=True)]
+    assert "My Thesis" in summary
+    assert any("no author recorded" in str(item) for item in summary)
+    assert "no author recorded" in words
+
+    # Section 2 — the same bibliography, laid out by the one shared definition.
+    # Blank strings round-trip through openpyxl as empty cells (None).
+    ref_rows = [list(row) for row in workbook[dossier.REFERENCES_SHEET].iter_rows(min_row=2, values_only=True)]
+    expected = [
+        [value if value != "" else None for value in row]
+        for row in references.table(references.compile(snap))
+    ]
+    assert ref_rows == expected
+
+    # Section 3 — the same papers.
+    note_rows = [row[0] for row in workbook[dossier.NOTES_SHEET].iter_rows(min_row=2, values_only=True)]
+    assert note_rows == ["Complete Paper", "Incomplete Paper"]
 
 
 # --- dossier ----------------------------------------------------------------
@@ -223,7 +262,7 @@ def test_dossier_cover_page_states_what_is_missing():
     _seed_paper(db, "p2", "Incomplete Paper", authors=None, year=None)
     db.commit()
 
-    text = "\n".join(_paragraphs(dossier.render(snapshot_mod.build(db, "u1", "proj1"))))
+    text = "\n".join(_paragraphs(dossier.render_docx(snapshot_mod.build(db, "u1", "proj1"))))
 
     assert "My Thesis" in text
     assert "Before you rely on this" in text
@@ -242,7 +281,7 @@ def test_dossier_says_nothing_missing_when_project_is_clean():
                 key_findings="It works.", limitations="Small n.", relevance="High.")
     db.commit()
 
-    text = "\n".join(_paragraphs(dossier.render(snapshot_mod.build(db, "u1", "proj1"))))
+    text = "\n".join(_paragraphs(dossier.render_docx(snapshot_mod.build(db, "u1", "proj1"))))
 
     assert "Nothing was missing when this export ran." in text
     assert "To test." in text
@@ -262,7 +301,7 @@ def test_dossier_never_includes_conversations():
     db.commit()
 
     snap = snapshot_mod.build(db, "u1", "proj1")
-    text = "\n".join(_paragraphs(dossier.render(snap)))
+    text = "\n".join(_paragraphs(dossier.render_docx(snap)))
     refs_text = "\n".join(_paragraphs(references.render_docx(snap)))
 
     for artifact in (text, refs_text):
@@ -279,7 +318,7 @@ def test_dossier_references_are_sorted_deduplicated_and_hanging_indented():
     db.commit()
 
     snap = snapshot_mod.build(db, "u1", "proj1")
-    data = dossier.render(snap)
+    data = dossier.render_docx(snap)
 
     assert _section(data, "References") == [
         "Alpha, A. (2021). Alpha Study.",
@@ -346,7 +385,7 @@ def test_dossier_and_references_export_describe_the_gap_identically():
     db.commit()
     snap = snapshot_mod.build(db, "u1", "proj1")
 
-    dossier_text = "\n".join(_paragraphs(dossier.render(snap)))
+    dossier_text = "\n".join(_paragraphs(dossier.render_docx(snap)))
     refs_text = "\n".join(_paragraphs(references.render_docx(snap)))
 
     assert "Incomplete: authors, year, doi, journal" in dossier_text
@@ -421,14 +460,20 @@ def test_router_serves_both_resources_in_both_formats():
     assert load_workbook(BytesIO(refs_xlsx.body)).active["A1"].value == "Authors"
 
 
-def test_router_dossier_xlsx_is_the_literature_matrix_not_the_narrative():
+def test_router_dossier_xlsx_is_the_dossier_not_a_bare_matrix():
     db = _db()
     _seed_paper(db, "p1", "A Paper", authors=["Smith, J."], year=2020)
     db.commit()
 
     xlsx = _call(router.export_dossier("proj1", "xlsx", {"id": "u1"}, db))
-    headers = [c.value for c in load_workbook(BytesIO(xlsx.body)).active[1]]
+    workbook = load_workbook(BytesIO(xlsx.body))
 
+    assert workbook.sheetnames == [
+        dossier.SUMMARY_SHEET,
+        dossier.NOTES_SHEET,
+        dossier.REFERENCES_SHEET,
+    ]
+    headers = [c.value for c in workbook[dossier.NOTES_SHEET][1]]
     assert headers[0] == "Paper Title"
     assert "Source" in headers
 

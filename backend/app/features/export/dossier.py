@@ -1,15 +1,22 @@
-"""Renders the project dossier (.docx) from an export snapshot.
+"""Renders the project dossier from an export snapshot.
 
-Layout: a cover page that states what is missing, the APA reference list, and
-the per-paper reading notes.
+Both formats carry the same three sections, in the same order:
+
+    1. Summary          — what the export could not resolve
+    2. References       — the compiled APA bibliography
+    3. Paper notes      — one section per paper / one row per paper
+
+Word renders the notes as narrative sections; Excel renders them as a sheet of
+rows. Same content, two shapes.
 """
 
 from io import BytesIO
 
 from docx import Document
 from docx.shared import Pt
+from openpyxl import Workbook
 
-from app.features.export import references, snapshot as snapshot_mod
+from app.features.export import references, sheets, snapshot as snapshot_mod
 
 _PLACEHOLDERS = {
     snapshot_mod.NOT_GENERATED,
@@ -24,6 +31,33 @@ _ENTRY_LABELS = (
     ("limitations", "Limitations & gaps"),
     ("relevance", "Relevance / contribution"),
 )
+
+# Sheet order mirrors the document's section order.
+SUMMARY_SHEET = "Summary"
+REFERENCES_SHEET = "References"
+NOTES_SHEET = "Paper notes"
+
+_MATRIX_HEADERS = [
+    "Paper Title",
+    "Citation (Author, Year)",
+    "Research Objective / Questions",
+    "Methodology & Sample",
+    "Key Findings",
+    "Limitations & Gaps",
+    "Relevance / Contribution",
+    "APA Reference",
+    "Authors",
+    "Year",
+    "DOI",
+    "Journal",
+    "Missing metadata",
+    "Source",
+]
+
+_MATRIX_WIDTHS = [42, 22, 46, 42, 46, 42, 42, 52, 28, 8, 24, 26, 24, 16]
+
+
+# --- section 1: summary -----------------------------------------------------
 
 
 def _add_cover(document, snapshot) -> None:
@@ -42,6 +76,22 @@ def _add_cover(document, snapshot) -> None:
             document.add_paragraph(item, style="List Bullet")
     else:
         document.add_paragraph("Nothing was missing when this export ran.")
+
+
+def _summary_rows(snapshot) -> list[list]:
+    rows = [
+        ["Project", snapshot.project_name],
+        ["Exported", snapshot.generated_at],
+        ["Papers", len(snapshot.papers)],
+    ]
+    if snapshot.unresolved:
+        rows += [["Unresolved", item] for item in snapshot.unresolved]
+    else:
+        rows.append(["Unresolved", "Nothing was missing when this export ran."])
+    return rows
+
+
+# --- section 2: references --------------------------------------------------
 
 
 def _add_references(document, snapshot) -> None:
@@ -82,6 +132,9 @@ def _add_references(document, snapshot) -> None:
             note.paragraph_format.left_indent = Pt(36)
 
 
+# --- section 3: paper notes -------------------------------------------------
+
+
 def _add_paper_notes(document, snapshot) -> None:
     document.add_heading("Paper notes", level=1)
     if not snapshot.papers:
@@ -102,7 +155,37 @@ def _add_paper_notes(document, snapshot) -> None:
                 run.italic = True
 
 
-def render(snapshot) -> bytes:
+def _matrix_rows(snapshot) -> list[list]:
+    rows = []
+    for paper in snapshot.papers:
+        entry = paper.entry.values if paper.entry else {}
+        rows.append(
+            [
+                paper.title,
+                paper.citation,
+                entry.get("research_objective", snapshot_mod.NOT_GENERATED),
+                entry.get("methodology", snapshot_mod.NOT_GENERATED),
+                entry.get("key_findings", snapshot_mod.NOT_GENERATED),
+                entry.get("limitations", snapshot_mod.NOT_GENERATED),
+                entry.get("relevance", snapshot_mod.NOT_GENERATED),
+                paper.apa_reference,
+                "; ".join(paper.authors) if paper.authors else snapshot_mod.AUTHOR_UNKNOWN,
+                # Year/DOI/Journal stay blank when absent so the columns remain
+                # usable as data; "Missing metadata" and "Source" carry why.
+                paper.year,
+                paper.doi or "",
+                paper.journal or "",
+                ", ".join(paper.missing_fields),
+                paper.provenance,
+            ]
+        )
+    return rows
+
+
+# --- entry points -----------------------------------------------------------
+
+
+def render_docx(snapshot) -> bytes:
     document = Document()
     _add_cover(document, snapshot)
     _add_references(document, snapshot)
@@ -110,4 +193,24 @@ def render(snapshot) -> bytes:
 
     buffer = BytesIO()
     document.save(buffer)
+    return buffer.getvalue()
+
+
+def render_xlsx(snapshot) -> bytes:
+    workbook = Workbook()
+
+    summary = workbook.active
+    summary.title = SUMMARY_SHEET
+    sheets.write_sheet(summary, ["Item", "Value"], [22, 90], _summary_rows(snapshot))
+
+    notes = workbook.create_sheet(NOTES_SHEET)
+    sheets.write_sheet(notes, _MATRIX_HEADERS, _MATRIX_WIDTHS, _matrix_rows(snapshot))
+
+    refs = workbook.create_sheet(REFERENCES_SHEET)
+    sheets.write_sheet(
+        refs, references.HEADERS, references.WIDTHS, references.table(references.compile(snapshot))
+    )
+
+    buffer = BytesIO()
+    workbook.save(buffer)
     return buffer.getvalue()

@@ -7,6 +7,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 from rapidfuzz import fuzz
 
 from app.core import citations
+from app.core.papers import authors_from_row
 from app.features.embedding.providers.factory import resolve_embedding_provider
 from app.features.graph.builder import layout_nodes
 from app.features.literature import metadata as metadata_sources
@@ -196,13 +197,7 @@ class LiteratureService:
 
     @staticmethod
     def _paper_from_row(row) -> dict:
-        stored_authors = row["authors"]
-        try:
-            authors = json.loads(stored_authors) if stored_authors else []
-        except (TypeError, ValueError):
-            authors = []
-        if not authors and row["author"]:
-            authors = [a.strip() for a in re.split(r"[;,]", row["author"]) if a.strip()]
+        authors = authors_from_row(dict(row))
         return {
             "id": row["id"],
             "title": row["title"] or "",
