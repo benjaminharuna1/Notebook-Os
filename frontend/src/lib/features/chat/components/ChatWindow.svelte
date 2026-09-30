@@ -5,6 +5,7 @@
   import { messages, streaming } from '../store';
   import { streamChat, getSession } from '../api';
   import { listDocuments } from '$lib/features/documents/api';
+  import { exportConversation } from '$lib/features/export/api';
   import { toasts } from '$lib/core/stores/toasts';
   import type { ChatMessage as ChatMessageType, SourceChunk } from '../types';
 
@@ -13,6 +14,8 @@
   type streamOptions = { regenerate?: boolean; slashCommand?: string };
 
   let sessionId = $state<string | null>(null);
+  let sessionTitle = $state('Conversation');
+  let exporting = $state(false);
   let abortFn = $state<(() => void) | null>(null);
   let selectedDocIds = $state<Set<string>>(new Set());
   let availableDocs = $state<{ id: string; title: string }[]>([]);
@@ -21,8 +24,22 @@
     try {
       const data = await getSession(sid);
       messages.set(data.messages);
+      sessionTitle = data.session?.title || 'Conversation';
     } catch {
       toasts.add('Could not load session', 'error');
+    }
+  }
+
+  async function exportCurrent() {
+    if (!projectId || !sessionId || exporting) return;
+    exporting = true;
+    try {
+      const filename = await exportConversation(projectId, sessionId);
+      toasts.add(`Exported ${filename}`, 'success');
+    } catch (e) {
+      toasts.add(e instanceof Error ? e.message : 'Export failed', 'error');
+    } finally {
+      exporting = false;
     }
   }
 
@@ -39,6 +56,7 @@
   $effect(() => {
     if (projectId) {
       sessionId = null;
+      sessionTitle = 'Conversation';
       messages.set([]);
       selectedDocIds = new Set();
       loadDocs();
@@ -53,6 +71,7 @@
       }
     } else {
       sessionId = null;
+      sessionTitle = 'Conversation';
       messages.set([]);
     }
   });
@@ -238,6 +257,26 @@
 </script>
 
 <div class="flex h-full flex-col">
+  <div class="flex items-center justify-between gap-3 border-b border-slate-200 px-6 py-3">
+    <h2 class="truncate text-sm font-medium text-slate-700">{sessionTitle}</h2>
+    <button
+      type="button"
+      onclick={exportCurrent}
+      disabled={!sessionId || $messages.length === 0 || exporting}
+      title="Export this conversation as a Word report"
+      class="flex items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      {#if exporting}
+        <span
+          class="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600"
+        ></span>
+      {:else}
+        <span aria-hidden="true">⇩</span>
+      {/if}
+      Export
+    </button>
+  </div>
+
   <div
     class="flex-1 space-y-4 overflow-y-auto p-6"
     use:scrollToBottom

@@ -12,3 +12,9 @@ export function exportReferences(
 ): Promise<string> {
   return downloadFile(`/projects/${projectId}/export/references?format=${format}`);
 }
+
+export function exportConversation(projectId: string, sessionId: string): Promise<string> {
+  return downloadFile(
+    `/projects/${projectId}/export/conversation/${sessionId}?format=docx`,
+  );
+}

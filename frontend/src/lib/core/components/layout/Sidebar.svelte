@@ -5,6 +5,8 @@
   import { logout } from '$lib/features/auth/api';
   import { listSessions, deleteSession, renameSession } from '$lib/features/chat/api';
   import { getProject } from '$lib/features/projects/api';
+  import { exportConversation } from '$lib/features/export/api';
+  import { toasts } from '$lib/core/stores/toasts';
   import type { ChatSession } from '$lib/features/chat/types';
   import type { Project } from '$lib/features/projects/types';
 
@@ -18,6 +20,7 @@
   let project = $state<Project | null>(null);
   let renamingId = $state<string | null>(null);
   let renameValue = $state('');
+  let exportingId = $state<string | null>(null);
 
   const projectId = $derived.by(() => {
     const m = /^\/projects\/([^/]+)/.exec($page.url.pathname);
@@ -97,6 +100,19 @@
   function cancelRename() {
     renamingId = null;
     renameValue = '';
+  }
+
+  async function exportSession(id: string) {
+    if (!projectId || exportingId) return;
+    exportingId = id;
+    try {
+      const filename = await exportConversation(projectId, id);
+      toasts.add(`Exported ${filename}`, 'success');
+    } catch (e) {
+      toasts.add(e instanceof Error ? e.message : 'Export failed', 'error');
+    } finally {
+      exportingId = null;
+    }
   }
 
   async function handleLogout() {
@@ -191,6 +207,20 @@
                 {s.title || 'Untitled'}
               </a>
             {/if}
+            <button
+              onclick={() => exportSession(s.id)}
+              disabled={exportingId !== null}
+              class="hidden px-1 text-xs text-slate-400 hover:text-indigo-600 group-hover:block disabled:cursor-not-allowed disabled:opacity-40"
+              title="Export conversation"
+            >
+              {#if exportingId === s.id}
+                <span
+                  class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600 align-middle"
+                ></span>
+              {:else}
+                ⇩
+              {/if}
+            </button>
             <button
               onclick={() => removeSession(s.id)}
               class="hidden px-1 text-xs text-slate-400 hover:text-red-500 group-hover:block"

@@ -8,8 +8,6 @@ backend/dist/
 *.py[cod]
 *.egg-info/
 
-docs/
-
 # ===== Runtime data (regenerated / re-downloadable on demand) =====
 # SQLite DB, uploaded docs, Chroma vector store, processed files
 backend/data/

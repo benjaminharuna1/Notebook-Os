@@ -28,6 +28,7 @@ NOT_GENERATED = "not generated yet"
 CLEARED_BY_YOU = "cleared by you"
 EMPTY = "empty"
 UNENRICHED = "never enriched"
+NOT_IN_PROJECT = "not in this project any more"
 
 ENTRY_FIELDS = (
     "research_objective",

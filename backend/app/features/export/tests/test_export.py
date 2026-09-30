@@ -7,7 +7,13 @@ from docx import Document
 from fastapi import HTTPException
 from openpyxl import load_workbook
 
-from app.features.export import dossier, references, router, snapshot as snapshot_mod
+from app.features.export import (
+    conversation,
+    dossier,
+    references,
+    router,
+    snapshot as snapshot_mod,
+)
 
 _SCHEMA = """
 CREATE TABLE projects (id TEXT PRIMARY KEY, user_id TEXT, name TEXT);
@@ -66,6 +72,30 @@ def _seed_entry(db, paper_id, **fields):
     keys = ", ".join(columns)
     marks = ", ".join("?" for _ in columns)
     db.execute(f"INSERT INTO literature_entries ({keys}) VALUES ({marks})", list(columns.values()))
+
+
+def _seed_session(db, sid="s1", *, user_id="u1", project_id="proj1", title="First pass",
+                  model_used=None):
+    db.execute(
+        "INSERT INTO chat_sessions (id, user_id, project_id, title, model_used, created_at)"
+        " VALUES (?, ?, ?, ?, ?, '2024-01-01')",
+        (sid, user_id, project_id, title, model_used),
+    )
+
+
+def _seed_message(db, mid, sid, role, content, *, sources=None, model_used=None):
+    db.execute(
+        "INSERT INTO chat_messages (id, session_id, role, content, sources, model_used, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, '2024-01-01')",
+        (
+            mid,
+            sid,
+            role,
+            content,
+            json.dumps(sources) if sources is not None else None,
+            model_used,
+        ),
+    )
 
 
 # --- snapshot ---------------------------------------------------------------
@@ -525,3 +555,155 @@ def test_router_refuses_project_without_papers():
         assert "no papers" in exc.detail
     else:
         raise AssertionError("expected an HTTPException for a project with no papers")
+
+
+# --- conversation: the session report ---------------------------------------
+
+
+def _seed_conversation(db, *, source_document="p1"):
+    _seed_session(db, "s1", title="First pass", model_used="qwen2.5-0.5b")
+    _seed_message(db, "m1", "s1", "user", "What did the paper conclude?")
+    _seed_message(
+        db,
+        "m2",
+        "s1",
+        "assistant",
+        "It concluded that yields improve.",
+        sources=[
+            {
+                "chunk_id": "c1",
+                "title": "Deep Learning Survey",
+                "page": 4,
+                "document_id": source_document,
+                "apa_reference": "Smith, J. (2020). Deep Learning Survey.",
+            }
+        ],
+    )
+    db.commit()
+
+
+def test_conversation_export_includes_questions_and_answers():
+    db = _db()
+    _seed_paper(db, "p1", "Deep Learning Survey", authors=["Smith, J."], year=2020)
+    _seed_conversation(db)
+    db.commit()
+
+    text = "\n".join(
+        _paragraphs(conversation.render_docx(conversation.build(db, "u1", "s1")))
+    )
+
+    assert "What did the paper conclude?" in text
+    assert "It concluded that yields improve." in text
+    assert "Smith, J. (2020). Deep Learning Survey. (p. 4)" in text
+    # The cited paper is still in the library, so nothing is flagged.
+    assert snapshot_mod.NOT_IN_PROJECT not in text
+
+
+def test_conversation_export_marks_citation_to_deleted_document():
+    db = _db()
+    # No `documents` row for the cited id: the paper was deleted after the chat.
+    _seed_conversation(db, source_document="deleted-paper")
+    db.commit()
+
+    report = conversation.build(db, "u1", "s1")
+    text = "\n".join(_paragraphs(conversation.render_docx(report)))
+
+    # The answer survives, the captured citation survives, and the loss is marked.
+    assert "It concluded that yields improve." in text
+    assert "Smith, J. (2020). Deep Learning Survey." in text
+    assert snapshot_mod.NOT_IN_PROJECT in text
+    assert any("no longer in this project" in item for item in report.unresolved)
+    assert "no longer in this project" in text
+
+
+def test_conversation_export_keeps_web_sources_unmarked():
+    db = _db()
+    _seed_session(db, "s1")
+    _seed_message(
+        db,
+        "m1",
+        "s1",
+        "assistant",
+        "From the web.",
+        sources=[
+            {
+                "chunk_id": "c1",
+                "title": "A Web Page",
+                "page": None,
+                "document_id": None,
+                "apa_reference": "",
+            }
+        ],
+    )
+    db.commit()
+
+    text = "\n".join(
+        _paragraphs(conversation.render_docx(conversation.build(db, "u1", "s1")))
+    )
+
+    assert "A Web Page" in text
+    assert snapshot_mod.NOT_IN_PROJECT not in text
+
+
+def test_conversation_export_states_project_date_and_message_count():
+    db = _db()
+    _seed_conversation(db)
+    db.commit()
+
+    text = "\n".join(
+        _paragraphs(conversation.render_docx(conversation.build(db, "u1", "s1")))
+    )
+
+    assert "First pass" in text
+    assert "My Thesis" in text
+    assert "Exported" in text
+    assert "2 message(s)" in text
+
+
+def test_conversation_export_is_scoped_to_owner():
+    db = _db()
+    _seed_conversation(db)
+    db.commit()
+
+    assert conversation.build(db, "someone-else", "s1") is None
+
+
+def test_router_serves_conversation_as_docx():
+    db = _db()
+    _seed_paper(db, "p1", "Deep Learning Survey", authors=["Smith, J."], year=2020)
+    _seed_conversation(db)
+    db.commit()
+
+    response = _call(router.export_conversation("proj1", "s1", "docx", {"id": "u1"}, db))
+
+    assert response.media_type.endswith("wordprocessingml.document")
+    assert response.headers["content-disposition"] == (
+        'attachment; filename="first-pass-conversation.docx"'
+    )
+    assert response.body.startswith(b"PK")
+
+
+def test_router_refuses_empty_conversation():
+    db = _db()
+    _seed_session(db, "s1")
+    db.commit()
+
+    try:
+        _call(router.export_conversation("proj1", "s1", "docx", {"id": "u1"}, db))
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert "empty" in exc.detail
+    else:
+        raise AssertionError("expected an HTTPException for an empty conversation")
+
+
+def test_router_404s_for_missing_conversation():
+    db = _db()
+    db.commit()
+
+    try:
+        _call(router.export_conversation("proj1", "nope", "docx", {"id": "u1"}, db))
+    except HTTPException as exc:
+        assert exc.status_code == 404
+    else:
+        raise AssertionError("expected a 404 for a missing conversation")
