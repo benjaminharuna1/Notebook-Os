@@ -1,29 +1,24 @@
 # Export Proposal — Getting the Researcher's Work Out of the App
 
-**Status:** revised after review — the session report is restored as the sprint's second artifact. Awaiting sign-off (see §12).
-**Reviewer:** _unassigned_ — **name the approver here.** This is the ticket's open question; until a person owns it, the gate cannot be satisfied by anyone. Sign-off is required **before the implementation merges**, not before it is written — the code was written first, so the merge is the boundary the gate still protects (see §13).
+**Status:** draft proposal — awaiting reviewer assignment and approval. FRTR-001 delivers this document only; the implementation proceeds under its own ticket once this is approved.
+**Reviewer:** _unassigned_ — **name the approver here.** Until a person owns it, the gate cannot be satisfied. Sign-off is required before the implementation begins (see §13).
 **Scope:** the whole sprint's export work. Every later export ticket implements what this document decides.
 **Decision up front:** one server-side **Export Snapshot** assembled from SQLite, rendered on demand by thin
 per-format writers, delivered as **two** artifacts — a **reference list** and a **session report** — plus a
 project dossier that reuses the same reference list. No new dependencies. No network. No PDF pipeline.
 
-> **One decision changed during implementation.** The Export control lives on the Literature and
-> Library pages rather than the project header. The living contract is
-> `backend/app/features/export/CONTEXT.md`; the reasoning and the rejected trade-off below (§4–§6)
-> are unchanged.
+> **The design covers both artifacts.** An earlier revision removed saved conversations from every
+> artifact and deleted the §8 deleted-document rules, then wrote the omission into the contract
+> ("documents only"). That contradicted the sprint's R3, which names two artifacts: a reference list and
+> a session report. This proposal therefore designates the chat half as its own **conversation** resource
+> — a session-scoped `.docx` report — with the deleted-document rule in force: a citation whose document
+> is gone is kept, marked *not in this project any more*, and counted on the report's cover.
 >
-> **Review response — the session report is reinstated.** An earlier revision of this branch removed
-> saved conversations from every artifact and deleted the §8 deleted-document rules, then wrote the
-> omission into the contract ("documents only"). The review was right that this contradicts the
-> sprint's R3, which names two artifacts: a reference list and a session report. The chat half is now
-> shipped as its own **conversation** resource — a session-scoped `.docx` report (`backend/app/features/export/conversation.py`)
-> with the deleted-document rule back in force: a citation whose document is gone is kept, marked
-> *not in this project any more*, and counted on the report's cover. This is additive — one renderer,
-> one endpoint and one button over the snapshot pattern the rest of §5–§9 already establishes — not a
-> change to the core decision.
+> **One placement decision.** The Export control lives on the Literature and Library pages rather than the
+> project header.
 
 **Core decision** — the snapshot, the renderers, and the deliberate rejection of a PDF pipeline — stands as
-written. The Export-control placement and the reinstated session report are the only departures.
+written.
 
 ---
 
@@ -170,12 +165,12 @@ inside the same snapshot architecture — which is exactly why the decision is a
 
 ## 7. What the researcher gets
 
-The sprint names **two artifacts**. Both are what she walks away with; a third, the project dossier,
-is offered alongside them.
+The sprint names **two artifacts**. Both are what she will walk away with; a third, the project dossier,
+is planned alongside them.
 
 ### Artifact 1 — Reference list (`references`)
 
-- **What she receives:** the compiled APA bibliography — one entry per paper, never fewer, sorted
+- **What she will receive:** the compiled APA bibliography — one entry per paper, never fewer, sorted
   alphabetically, complete entries first and the rest under *References with incomplete metadata*.
   She picks the format: **RIS** (imports straight into Zotero/Mendeley/EndNote), **Word** (the APA
   list), or **Excel** (one row per reference with its gaps and provenance). Every file states its
@@ -188,7 +183,7 @@ is offered alongside them.
 
 ### Artifact 2 — Session report (`conversation`)
 
-- **What she receives:** one saved chat session as a Word document — the session title, project,
+- **What she will receive:** one saved chat session as a Word document — the session title, project,
   export date and message count; the questions and answers in order; and, under each answer, the
   sources it rested on. A citation whose document was deleted after the chat is kept, marked
   *not in this project any more*, and counted on the cover.
@@ -200,7 +195,7 @@ is offered alongside them.
 - **When it fails:** the reason in a toast, verbatim; an empty conversation is refused with an
   explanation rather than answered with an empty file.
 
-### Also shipped — Project dossier (`dossier`)
+### Also planned — Project dossier (`dossier`)
 
 Not one of the sprint's two artifacts, but offered from the same Export control: the project write-up —
 cover page (what is missing), the same compiled reference list, and the per-paper notes — as Word or
@@ -239,11 +234,8 @@ The rule: **an exported answer keeps the citation it was written with.** At answ
 citation label alongside the document id in `sources`. At export time, a source whose document is gone is
 rendered as its captured label with a marker — *not in this project any more* — and counted on the cover page
 under unresolved items. The researcher sees what the answer rested on and that the underlying paper is no
-longer in her library. Nothing is silently dropped, and nothing is invented.
-
-*Implemented:* `backend/app/features/export/conversation.py`, pinned by
-`test_conversation_export_marks_citation_to_deleted_document`. A source with no document id (a web fallback)
-never had a project document, so it is left unmarked.
+longer in her library. Nothing is silently dropped, and nothing is invented. A source with no document id
+(a web fallback) never had a project document, so it is left unmarked.
 
 ---
 
@@ -264,6 +256,9 @@ never had a project document, so it is left unmarked.
 
 ## 10. Out of scope
 
+**Implementation of the export feature is out of scope for this ticket (FRTR-001).** This document is the
+ticket's deliverable; the implementation proceeds under its own ticket once this proposal is approved.
+
 PDF generation (§6). Changing the frontend download mechanism — it already works in the web build and the
 Electron shell, and `desktop/electron/preload.js` exposes no filesystem or save-dialog API, so a native
 "save as" flow would be new scope on top of the export decision. Graph and literature-map data exports.
@@ -281,13 +276,13 @@ The knowledge-graph visual. Anything requiring network.
 | 04 — missing metadata and deleted-document citations shown honestly | §8 |
 | 05 — readable in one sitting, approved before implementation | §1–§10, and the review log below |
 
-### Status
+### Status (author's self-assessment — the reviewer closes 05)
 
 - [x] 01 — two or more distinct approaches, each assessed against all four criteria (§3, §4)
 - [x] 02 — one approach chosen and defended; the deliberately-rejected trade-off named (§5, §6)
 - [x] 03 — both artifacts described from the researcher's side: what she receives, where she starts, while it runs, when it fails (§7)
-- [x] 04 — missing metadata and citations to deleted documents shown honestly (§8, implemented in `conversation.py`)
-- [ ] 05 — readable in one sitting and approved by a reviewer before implementation — readable; implementation preceded approval, so the gate is enforced at the **merge** boundary instead. Approver: _unassigned_ (see §12, §13).
+- [x] 04 — missing metadata and citations to deleted documents shown honestly (§8)
+- [ ] 05 — readable in one sitting and approved by a reviewer before implementation — readable; approver _unassigned_ (see §12, §13).
 
 If this is approved, the implementation work is: the snapshot, the reference-list and dossier renderers,
 the conversation renderer, the Export control and the two conversation buttons, the `core/citations.py`
@@ -300,26 +295,29 @@ extraction, and the `run_in_threadpool` fix on the existing export routes.
 | Step | What happened |
 |---|---|
 | Proposal | Approach A chosen and defended (§5); the PDF trade-off named (§6). |
-| First implementation | Saved conversations were removed from every artifact and the §8 deleted-document rules deleted; the contract was written as "documents only". |
-| Review finding | The sprint's R3 names two artifacts — a reference list *and* a session report. The branch had misread it as paper-only and left the deleted-document case unaddressed. |
-| Resolution | The `conversation` resource was added (`conversation.py`), the deleted-document rule reinstated (§8), and §7 rewritten to describe both artifacts from the researcher's side. |
-| Sign-off | **Pending** — approver _unassigned_. Approval must precede the merge; the gate now sits at the merge boundary (see §13). |
+| Earlier revision | Saved conversations were removed from every artifact and the §8 deleted-document rules deleted; the contract was written as "documents only". |
+| Review finding | The sprint's R3 names two artifacts — a reference list *and* a session report. The earlier revision had misread it as paper-only and left the deleted-document case unaddressed. |
+| Resolution | This proposal designates the chat half its own `conversation` resource and reinstates the deleted-document rule (§8); §7 describes both artifacts from the researcher's side. |
+| Scope | Implementation is out of scope for FRTR-001 (§10). It proceeds under its own ticket, from a separate branch, once this proposal is approved. |
+| Sign-off | **Pending** — approver _unassigned_. |
 
-Process note, stated plainly: implementation began before this proposal was approved, which is the
-deviation criterion 05 exists to prevent. The record above keeps that visible rather than implying the
-gate was met in order.
+Process note: the implementation was written ahead of this approval and is parked on its own branch,
+`feat/export-implementation`, unmerged. Approving the proposal here is what permits that branch to merge —
+so the sequencing boundary, decision before build, is restored at the merge, and FRTR-001 ships the
+proposal only.
 
 ---
 
 ## 13. Open decisions (what the review is actually deciding)
 
-Because the code was written first, the review is not ratifying a plan — it is deciding five things that
-are still open. Each is reversible, and the reversal cost is stated so that rejecting one is a real
-option rather than "rip out 72 files".
+Because the code was written ahead of approval, the review is not ratifying a plan — it is deciding five
+things that are still open. The implementation sits on a separate, unmerged branch, so approval is a real
+choice. Each decision is reversible, and the reversal cost is stated so that rejecting one is a real option
+rather than "rip out 72 files".
 
 | # | Decision | Options | Recommendation | Cost to reverse |
 |---|---|---|---|---|
-| 1 | **Merge sequencing** | (a) merge proposal and implementation together; (b) gate the merge — the proposal PR is approved first, the implementation PR after | **(b)** — restores what criterion 05 protects | none; it is ordering, not code |
+| 1 | **Merge sequencing** | (a) merge proposal and implementation together; (b) ship the proposal-only PR now, and open the implementation PR from `feat/export-implementation` after approval | **(b)** — restores what criterion 05 protects | none; it is ordering, not code |
 | 2 | **PDF export** | (a) keep it deferred; (b) build it — bundled converter or a ReportLab re-layout | **(a) for now**, as its own ticket | (b) is hundreds of MB or a second layout: the §6 trade-off |
 | 3 | **Conversation scope** | (a) current session only; (b) all sessions in the project | **(a)** | small — an endpoint family plus a UI entry point |
 | 4 | **Conversation formats** | (a) `.docx` only; (b) add `.md` / `.xlsx` | **(a)**; `ConversationFormat` is the seam | small — one new renderer per format |
