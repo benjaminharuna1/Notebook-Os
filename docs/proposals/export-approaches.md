@@ -24,6 +24,10 @@ written.
 
 ## 1. The problem
 
+**What this ticket delivers:** a written proposal a reviewer can read and approve in one sitting. It is the
+sprint's first deliverable and its gate — every export ticket after this one implements what it decides.
+Implementation is out of scope here (§10).
+
 Everything the researcher produces inside NARA currently stays inside NARA. Today she can
 get exactly one slice of her work out: the literature mapping. Her chat answers, her per-paper readings, the
 citations those answers rest on, and every piece of provenance behind them are trapped in the app.
@@ -266,23 +270,23 @@ The knowledge-graph visual. Anything requiring network.
 
 ---
 
-## 11. Reviewer checklist
+## 11. Reviewer checklist (the ticket's acceptance criteria)
 
-| Criterion | Where it is answered |
-|---|---|
-| 01 — two or more approaches against all four criteria | §3, §4 |
-| 02 — one chosen, defended, rejected trade-off named | §5, §6 |
-| 03 — both artifacts from the researcher's side | §7 — the reference list (Artifact 1) and the session report (Artifact 2) |
-| 04 — missing metadata and deleted-document citations shown honestly | §8 |
-| 05 — readable in one sitting, approved before implementation | §1–§10, and the review log below |
+| # | Criterion (verbatim from the ticket) | Where it is answered |
+|---|---|---|
+| 01 | Compares at least two distinct candidate approaches to export, each assessed against all four criteria: works fully offline on low-end hardware; honest output when data is missing; stays maintainable as the app grows; what the researcher receives in her hands | §3, §4 |
+| 02 | Chooses one approach and defends it against the comparison; explicitly names the trade-off that was deliberately not taken, and why | §5, §6 |
+| 03 | Describes both artifacts from the researcher's side: what she receives for each, where she starts each export, and what she sees while it runs and when it fails | §7 — the reference list (Artifact 1) and the session report (Artifact 2) |
+| 04 | States how missing metadata and citations to deleted documents will be shown honestly in the output | §8 |
+| 05 | Can be read and judged in one sitting (under 15 minutes) and is approved by a reviewer before any export implementation begins | §1–§10, and the review log below |
 
 ### Status (author's self-assessment — the reviewer closes 05)
 
-- [x] 01 — two or more distinct approaches, each assessed against all four criteria (§3, §4)
+- [x] 01 — two or more distinct approaches, each assessed against all four criteria: offline/low-end, honest output, maintainable, what she receives (§3, §4)
 - [x] 02 — one approach chosen and defended; the deliberately-rejected trade-off named (§5, §6)
 - [x] 03 — both artifacts described from the researcher's side: what she receives, where she starts, while it runs, when it fails (§7)
 - [x] 04 — missing metadata and citations to deleted documents shown honestly (§8)
-- [ ] 05 — readable in one sitting and approved by a reviewer before implementation — readable; approver _unassigned_ (see §12, §13).
+- [ ] 05 — readable in one sitting (under 15 minutes) and approved by a reviewer before implementation — readable; approver _unassigned_ (see §12, §13).
 
 If this is approved, the implementation work is: the snapshot, the reference-list and dossier renderers,
 the conversation renderer, the Export control and the two conversation buttons, the `core/citations.py`
