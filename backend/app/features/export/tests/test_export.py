@@ -707,3 +707,60 @@ def test_router_404s_for_missing_conversation():
         assert exc.status_code == 404
     else:
         raise AssertionError("expected a 404 for a missing conversation")
+
+
+# --- read batching: no query per row ----------------------------------------
+
+
+class _CountingDb:
+    """Wraps a connection to record the SQL each build issues."""
+
+    def __init__(self, db):
+        self._db = db
+        self.queries: list[str] = []
+
+    def execute(self, sql, *args):
+        self.queries.append(sql)
+        return self._db.execute(sql, *args)
+
+
+def test_snapshot_reads_every_papers_row_in_one_query():
+    db = _db()
+    for i in range(6):
+        _seed_paper(db, f"p{i}", f"Paper {i}", authors=[f"Author {i}"], year=2000 + i)
+        _seed_entry(db, f"p{i}", research_objective="x")
+    db.commit()
+
+    counting = _CountingDb(db)
+    snapshot_mod.build(counting, "u1", "proj1")
+
+    document_queries = [q for q in counting.queries if "FROM documents" in q]
+    entry_queries = [q for q in counting.queries if "FROM literature_entries" in q]
+    # Six papers, still one query each — not one per paper.
+    assert len(document_queries) == 1
+    assert len(entry_queries) == 1
+
+
+def test_conversation_checks_every_citation_in_one_query():
+    db = _db()
+    _seed_session(db, "s1")
+    _seed_message(
+        db,
+        "m1",
+        "s1",
+        "assistant",
+        "answer",
+        sources=[
+            {"chunk_id": f"c{i}", "title": f"T{i}", "page": 1,
+             "document_id": f"d{i}", "apa_reference": ""}
+            for i in range(6)
+        ],
+    )
+    db.commit()
+
+    counting = _CountingDb(db)
+    conversation.build(counting, "u1", "s1")
+
+    document_queries = [q for q in counting.queries if "FROM documents" in q]
+    # Six cited sources, one batched lookup.
+    assert len(document_queries) == 1

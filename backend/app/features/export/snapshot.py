@@ -160,16 +160,9 @@ def _blank_state(entry_row: dict, user_edited: set[str], key: str) -> str:
     return EMPTY
 
 
-def _build_entry(db, user_id: str, project_id: str, paper_id: str) -> Optional[Entry]:
-    if not _has_table(db, "literature_entries"):
+def _build_entry(entry_row: Optional[dict]) -> Optional[Entry]:
+    if entry_row is None:
         return None
-    row = db.execute(
-        "SELECT * FROM literature_entries WHERE paper_id = ? AND user_id = ? AND project_id = ?",
-        (paper_id, user_id, project_id),
-    ).fetchone()
-    if row is None:
-        return None
-    entry_row = dict(row)
     user_edited = set(_parse_json_list(entry_row.get("user_edited")))
     values = {}
     for key in ENTRY_FIELDS:
@@ -194,7 +187,7 @@ def _repair_reference_title(apa: str) -> str:
     return apa.replace(stored, repaired, 1)
 
 
-def _build_paper(db, user_id: str, project_id: str, row: dict) -> Paper:
+def _build_paper(row: dict, entry_row: Optional[dict]) -> Paper:
     authors = authors_from_row(row)
     # One title per paper, capitalised once, so the reference list, the title
     # column and the reading notes cannot disagree.
@@ -237,7 +230,7 @@ def _build_paper(db, user_id: str, project_id: str, row: dict) -> Paper:
         apa_reference=apa,
         provenance=_provenance(row),
         missing_fields=missing,
-        entry=_build_entry(db, user_id, project_id, row["id"]),
+        entry=_build_entry(entry_row),
     )
 
 
@@ -258,7 +251,20 @@ def build(db, user_id: str, project_id: str) -> Snapshot:
         (user_id, project_id),
     ).fetchall()
 
-    papers = [_build_paper(db, user_id, project_id, dict(row)) for row in rows]
+    # One query for every paper's reading notes rather than one per paper, and
+    # the table check is computed once. (The literature feature adds this table
+    # via migrations, so a project that never opened that page may lack it.)
+    entry_rows: dict[str, dict] = {}
+    if _has_table(db, "literature_entries"):
+        entry_rows = {
+            row["paper_id"]: dict(row)
+            for row in db.execute(
+                "SELECT * FROM literature_entries WHERE user_id = ? AND project_id = ?",
+                (user_id, project_id),
+            ).fetchall()
+        }
+
+    papers = [_build_paper(dict(row), entry_rows.get(row["id"])) for row in rows]
 
     unresolved = []
     if not papers:

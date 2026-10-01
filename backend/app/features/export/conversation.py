@@ -19,7 +19,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from io import BytesIO
-from typing import Optional
+from typing import Iterable, Optional
 
 from docx import Document
 
@@ -78,22 +78,32 @@ def _parse_sources(raw: Optional[str]) -> list[dict]:
     return [item for item in parsed if isinstance(item, dict)] if isinstance(parsed, list) else []
 
 
-def _document_present(db, user_id: str, document_id: Optional[str]) -> bool:
-    """Whether a source still points at a document in the library.
+def _existing_document_ids(db, user_id: str, document_ids: Iterable[str]) -> set[str]:
+    """The subset of ``document_ids`` that still exist, in batched queries.
 
-    A source with no document id (a web fallback) is not a deleted-document
-    case, so it is reported as present; only a citation whose document id no
-    longer resolves is marked.
+    A batch rather than a SELECT per source, so a session with many citations is
+    one round-trip per chunk instead of one per source. A source with no document
+    id (a web fallback) never had a project document, so it is not a
+    deleted-document case and is reported as present.
     """
-    if not document_id:
-        return True
-    row = db.execute(
-        "SELECT 1 FROM documents WHERE id = ? AND user_id = ?", (document_id, user_id)
-    ).fetchone()
-    return row is not None
+    ids = {document_id for document_id in document_ids if document_id}
+    if not ids:
+        return set()
+    values = list(ids)
+    found: set[str] = set()
+    chunk = 500  # stay well under SQLite's bound-variable limit
+    for start in range(0, len(values), chunk):
+        batch = values[start : start + chunk]
+        placeholders = ", ".join("?" for _ in batch)
+        rows = db.execute(
+            f"SELECT id FROM documents WHERE user_id = ? AND id IN ({placeholders})",
+            (user_id, *batch),
+        ).fetchall()
+        found.update(row["id"] for row in rows)
+    return found
 
 
-def _build_source(db, user_id: str, item: dict) -> SourceRef:
+def _build_source(item: dict, present_ids: set[str]) -> SourceRef:
     document_id = item.get("document_id")
     return SourceRef(
         chunk_id=str(item.get("chunk_id") or ""),
@@ -101,7 +111,7 @@ def _build_source(db, user_id: str, item: dict) -> SourceRef:
         page=item.get("page"),
         apa_reference=str(item.get("apa_reference") or ""),
         document_id=document_id,
-        present=_document_present(db, user_id, document_id),
+        present=True if not document_id else document_id in present_ids,
     )
 
 
@@ -130,18 +140,28 @@ def build(db, user_id: str, session_id: str) -> Optional[Conversation]:
         (session_id,),
     ).fetchall()
 
-    messages = []
+    parsed = []
     for row in rows:
-        row = dict(row)
-        messages.append(
-            Message(
-                role=row.get("role") or "",
-                content=(row.get("content") or "").strip(),
-                model_used=row.get("model_used"),
-                created_at=row.get("created_at") or "",
-                sources=[_build_source(db, user_id, item) for item in _parse_sources(row.get("sources"))],
-            )
+        message_row = dict(row)
+        parsed.append((message_row, _parse_sources(message_row.get("sources"))))
+    cited_ids = {
+        item.get("document_id")
+        for _, sources in parsed
+        for item in sources
+        if item.get("document_id")
+    }
+    present_ids = _existing_document_ids(db, user_id, cited_ids)
+
+    messages = [
+        Message(
+            role=row.get("role") or "",
+            content=(row.get("content") or "").strip(),
+            model_used=row.get("model_used"),
+            created_at=row.get("created_at") or "",
+            sources=[_build_source(item, present_ids) for item in sources],
         )
+        for row, sources in parsed
+    ]
 
     missing = sum(1 for message in messages for source in message.sources if not source.present)
     unresolved = []

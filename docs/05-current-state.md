@@ -58,7 +58,7 @@
 
 ### Test Suite
 
-- **207 tests** across all features
+- **209 tests** across all features
 - Run: `cd backend && .venv\Scripts\python.exe -m pytest -q`
 - Tests are co-located in each feature's `tests/` directory
 - Coverage: auth, projects, ingestion, processing, embedding, documents, search, chat, graph (6 test files), literature (3 test files), export, models, skills, settings, actions, core

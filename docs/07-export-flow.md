@@ -329,4 +329,6 @@ Worth keeping green:
 | `test_conversation_export_marks_citation_to_deleted_document` | The R3 rule: a citation to a deleted document is kept and marked, not dropped |
 | `test_router_refuses_empty_conversation` | An empty session is a 400, not an empty file |
 | `test_router_404s_for_missing_conversation` | A session is exported only by its owner |
+| `test_snapshot_reads_every_papers_row_in_one_query` | No query-per-paper: six papers, one documents query and one literature_entries query |
+| `test_conversation_checks_every_citation_in_one_query` | No query-per-citation: six sources, one batched document lookup |
 | `test_dossier_xlsx_notes_sheet_keeps_the_historical_column_order` | Existing users' columns don't move |
