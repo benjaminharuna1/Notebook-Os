@@ -1,10 +1,10 @@
 # Export Proposal — Getting the Researcher's Work Out of the App
 
-**Status:** awaiting reviewer approval — this is the sprint gate.
+**Status:** revised after review — the session report is restored as the sprint's second artifact. Awaiting final reviewer sign-off on §7 (see the review log, §12).
 **Scope:** the whole sprint's export work. Every later export ticket implements what this document decides.
 **Decision up front:** one server-side **Export Snapshot** assembled from SQLite, rendered on demand by thin
-per-format writers, delivered as **two** artifacts — an `.xlsx` workbook and a `.docx` dossier. No new
-dependencies. No network. No PDF pipeline.
+per-format writers, delivered as **two** artifacts — a **reference list** and a **session report** — plus a
+project dossier that reuses the same reference list. No new dependencies. No network. No PDF pipeline.
 
 > **One decision changed during implementation.** The Export control lives on the Literature and
 > Library pages rather than the project header. The living contract is
@@ -169,34 +169,48 @@ inside the same snapshot architecture — which is exactly why the decision is a
 
 ## 7. What the researcher gets
 
-Both artifacts start from **one Export control in the project header**. The existing per-screen shortcuts
-stay as a second entrance, but discovery no longer depends on knowing which screen hides what.
+The sprint names **two artifacts**. Both are what she walks away with; a third, the project dossier,
+is offered alongside them.
 
-### Artifact 1 — Literature Workbook (`.xlsx`)
+### Artifact 1 — Reference list (`references`)
 
-- **What she receives:** one row per paper. Title, citation, the seven mapping columns she already gets today,
-  plus the columns that were previously dropped: authors, year, DOI, journal, and a **`Source`** column
-  recording where each row's identity came from (verified / AI-suggested / edited by you / missing).
-  Frozen header, wrapped text, sized columns — the existing formatting, kept.
-- **Where she starts:** Literature tab, or the project header Export control.
-- **While it runs:** the trigger shows an inline spinner and is disabled; a success toast names the file.
-- **When it fails:** a toast carries the reason verbatim (`Export failed: …`), not a silent no-op.
+- **What she receives:** the compiled APA bibliography — one entry per paper, never fewer, sorted
+  alphabetically, complete entries first and the rest under *References with incomplete metadata*.
+  She picks the format: **RIS** (imports straight into Zotero/Mendeley/EndNote), **Word** (the APA
+  list), or **Excel** (one row per reference with its gaps and provenance). Every file states its
+  project, generation date and entry count.
+- **Where she starts:** the Export control on the Literature page or the Library page (`ExportMenu`),
+  then the References row.
+- **While it runs:** the trigger shows an inline spinner and is disabled; a success toast names the
+  file.
+- **When it fails:** the reason in a toast, verbatim; a partial file is never delivered.
 
-### Artifact 2 — Project Dossier (`.docx`)
+### Artifact 2 — Session report (`conversation`)
 
-- **What she receives:** a document with a cover page (project name, export timestamp, model used, and a count
-  of anything unresolved or missing), then the APA reference list she gets today, then — when she asks for it —
-  her saved chat answers with their citations rendered inline.
-- **Where she starts:** the same Export control; the dossier is the default, since it is the artifact a
-  researcher pastes into a draft.
-- **While it runs:** inline spinner, disabled trigger, success toast.
-- **When it fails:** the reason in a toast; a partial file is never delivered.
+- **What she receives:** one saved chat session as a Word document — the session title, project,
+  export date and message count; the questions and answers in order; and, under each answer, the
+  sources it rested on. A citation whose document was deleted after the chat is kept, marked
+  *not in this project any more*, and counted on the cover.
+- **Where she starts:** the chat itself — an **Export** control in the chat header, or the download
+  icon on the session's row in the sidebar. The report is session-scoped, so it starts where the
+  session is rather than in the project Export menu.
+- **While it runs:** the control shows an inline spinner and is disabled; a success toast names the
+  file.
+- **When it fails:** the reason in a toast, verbatim; an empty conversation is refused with an
+  explanation rather than answered with an empty file.
 
-### One honest guard on both
+### Also shipped — Project dossier (`dossier`)
 
-Exporting a project with no papers is refused with an explanation, not answered with an empty file. Today
-the `.xlsx` route silently produces a header-only sheet and the `.docx` route says "No papers with references
-yet." — the first is worse, because a header-only spreadsheet looks like it worked.
+Not one of the sprint's two artifacts, but offered from the same Export control: the project write-up —
+cover page (what is missing), the same compiled reference list, and the per-paper notes — as Word or
+Excel. It reuses Artifact 1's compilation, so the dossier and the reference list can never disagree
+about a reference.
+
+### One honest guard on each
+
+Exporting a project with no papers — or a conversation with no messages — is refused with an
+explanation, never answered with an empty file. (Historically the `.xlsx` route silently produced a
+header-only sheet, which is worse than a message because it looks like it worked.)
 
 ---
 
@@ -226,13 +240,17 @@ rendered as its captured label with a marker — *not in this project any more* 
 under unresolved items. The researcher sees what the answer rested on and that the underlying paper is no
 longer in her library. Nothing is silently dropped, and nothing is invented.
 
+*Implemented:* `backend/app/features/export/conversation.py`, pinned by
+`test_conversation_export_marks_citation_to_deleted_document`. A source with no document id (a web fallback)
+never had a project document, so it is left unmarked.
+
 ---
 
 ## 9. How this stays maintainable
 
-- **New feature:** `backend/app/features/export/` — `snapshot.py` (assemble from SQLite), `workbook.py`,
-  `dossier.py`, `router.py`. It reads SQLite directly rather than importing `literature` or `chat`, which
-  honours the rule that features never import from each other.
+- **New feature:** `backend/app/features/export/` — `snapshot.py` (assemble from SQLite), `references.py`,
+  `dossier.py`, `conversation.py` (one saved session), `router.py`. It reads SQLite directly rather than
+  importing `literature` or `chat`, which honours the rule that features never import from each other.
 - **One extraction required:** the APA/citation formatter currently lives in `literature/service.py`
   (`auto_citation`, `apa_reference`). Export must not fork it. Move it to a feature-neutral
   `app/core/citations.py` and have `literature` import from there — one definition of APA for the whole app.
@@ -258,9 +276,34 @@ The knowledge-graph visual. Anything requiring network.
 |---|---|
 | 01 — two or more approaches against all four criteria | §3, §4 |
 | 02 — one chosen, defended, rejected trade-off named | §5, §6 |
-| 03 — both artifacts from the researcher's side | §7 |
+| 03 — both artifacts from the researcher's side | §7 — the reference list (Artifact 1) and the session report (Artifact 2) |
 | 04 — missing metadata and deleted-document citations shown honestly | §8 |
-| 05 — readable in one sitting, approved before implementation | this document, §1–§10 |
+| 05 — readable in one sitting, approved before implementation | §1–§10, and the review log below |
 
-If this is approved, the implementation work is: the snapshot, the two renderers, the Export control, the
-`core/citations.py` extraction, and the `run_in_threadpool` fix on the existing export routes.
+### Status
+
+- [x] 01 — two or more distinct approaches, each assessed against all four criteria (§3, §4)
+- [x] 02 — one approach chosen and defended; the deliberately-rejected trade-off named (§5, §6)
+- [x] 03 — both artifacts described from the researcher's side: what she receives, where she starts, while it runs, when it fails (§7)
+- [x] 04 — missing metadata and citations to deleted documents shown honestly (§8, implemented in `conversation.py`)
+- [ ] 05 — readable in one sitting and approved by a reviewer before implementation — readable, sign-off **pending**; implementation preceded approval (see §12)
+
+If this is approved, the implementation work is: the snapshot, the reference-list and dossier renderers,
+the conversation renderer, the Export control and the two conversation buttons, the `core/citations.py`
+extraction, and the `run_in_threadpool` fix on the existing export routes.
+
+---
+
+## 12. Review log
+
+| Step | What happened |
+|---|---|
+| Proposal | Approach A chosen and defended (§5); the PDF trade-off named (§6). |
+| First implementation | Saved conversations were removed from every artifact and the §8 deleted-document rules deleted; the contract was written as "documents only". |
+| Review finding | The sprint's R3 names two artifacts — a reference list *and* a session report. The branch had misread it as paper-only and left the deleted-document case unaddressed. |
+| Resolution | The `conversation` resource was added (`conversation.py`), the deleted-document rule reinstated (§8), and §7 rewritten to describe both artifacts from the researcher's side. |
+| Sign-off | **Pending** — reviewer approval on the revised §7. |
+
+Process note, stated plainly: implementation began before this proposal was approved, which is the
+deviation criterion 05 exists to prevent. The record above keeps that visible rather than implying the
+gate was met in order.
