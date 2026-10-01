@@ -1,7 +1,7 @@
 # Export Proposal — Getting the Researcher's Work Out of the App
 
-**Status:** draft proposal — reviewer assigned, awaiting sign-off. FRTR-001 delivers this document only; the implementation proceeds under its own ticket once this is approved.
-**Reviewer:** Benjamin Haruna Bala (@benjaminharuna1). The named approver; sign-off is required before the implementation begins (see §13).
+**Status:** draft proposal — awaiting reviewer assignment and approval. FRTR-001 delivers this document only; the implementation proceeds under its own ticket once this is approved.
+**Reviewer:** _unassigned_ — the approver must be a person who can say no, named before sign-off. Writing the author's own name here is not an assignment; a reviewer who cannot reject does not close 05 (see §13).
 **Scope:** the whole sprint's export work. Every later export ticket implements what this document decides.
 **Decision up front:** one server-side **Export Snapshot** assembled from SQLite, rendered on demand by thin
 per-format writers, delivered as **two** artifacts — a **reference list** and a **session report** — plus a
@@ -216,30 +216,54 @@ header-only sheet, which is worse than a message because it looks like it worked
 
 ## 8. Honest output rules
 
-This is the section the sprint is really about.
+This is the section the sprint is really about. Every marker below is a **literal string** a ticket can
+assert on — named here so FRTR-002, FRTR-005 and this document cannot word the same gap three ways.
 
-**Missing metadata.** A missing field must never be disguised as a plausible value.
+**Missing metadata.** A missing field must never be disguised as a plausible value. Each missing
+attribution field is written as a fixed placeholder — never blank, never fabricated:
+
+| Field | Literal placeholder |
+|---|---|
+| authors | `Unknown author` |
+| year | `No date` |
+| title | `Untitled` |
+| source (venue) | `Unknown source` |
+| doi | `No DOI` |
+
+These label a **field**. A missing author also means no in-text citation can be built, and that is a
+separate vocabulary: the citation reads `(author unknown)`, not the fabricated `Title, n.d.` the app
+produces today. A field placeholder must look like a field; a citation must look like a citation.
 
 - No fabricated identity. Where `auto_citation()` would currently invent `Title[0:30], n.d.`, the cell is
-  marked as missing and the `Source` column says why. Same for `apa_reference()`'s `Title (n.d.).`
-- Every row carries provenance from `verification_status` (`verified` / `ai` / `unverified`) plus
-  `metadata_user_edited`, so a citation the AI guessed is never presented like one Crossref confirmed.
-- **The three blank states are distinguished.** Today, "not generated yet", "generated as empty", and
-  "you cleared this field" are all one blank cell. The dossier labels each: *not generated*, *empty*,
-  *cleared by you*.
+  `Unknown author` / `(author unknown)` and the `Source` column says why. Same for `apa_reference()`'s
+  `Title (n.d.).`
+- Every row carries provenance from `verification_status` plus `metadata_user_edited`, in the fixed strings
+  `verified` / `ai-suggested` / `edited by you` / `never enriched`, so a citation the AI guessed is never
+  presented like one Crossref confirmed.
+- **The three blank states are distinguished.** Today they are all one blank cell. The dossier labels each
+  with its literal string: `not generated yet`, `empty`, `cleared by you`.
 - The dossier's cover page states the unresolved count, so the caveats are readable before the content.
 
-**Citations to deleted documents.** Deleting a document hard-deletes its literature entry and its
-references (`documents/repository.py:50`), and the citation recorded in an exported chat answer was never a
-foreign key — `chat_messages.sources` is a JSON blob holding a `document_id`. So a chat answer's citation can
-point at a document that no longer exists, and today that citation would simply vanish from any export.
+**Citations to deleted documents.** Deleting a document hard-deletes its literature entry and its references
+(`documents/repository.py:50`), and the citation recorded in an exported chat answer was never a foreign key
+— `chat_messages.sources` is a JSON blob holding a `document_id`. So a chat answer's citation can point at a
+document that no longer exists, and today that citation would simply vanish from any export.
 
-The rule: **an exported answer keeps the citation it was written with.** At answer time we capture the
-citation label alongside the document id in `sources`. At export time, a source whose document is gone is
-rendered as its captured label with a marker — *not in this project any more* — and counted on the cover page
-under unresolved items. The researcher sees what the answer rested on and that the underlying paper is no
-longer in her library. Nothing is silently dropped, and nothing is invented. A source with no document id
-(a web fallback) never had a project document, so it is left unmarked.
+The rule: **an exported answer keeps the citation it was written with, using only what `sources` already
+stores.** No new write at answer time — capturing a new field in chat storage is a change to chat sessions
+and is out of scope (FRTR-003). Each stored source renders from what is on disk:
+
+| What the stored source has | What the report shows |
+|---|---|
+| `apa_reference` (plus `page` when present) | the stored APA reference, plus `(p. <page>)` |
+| `title`, no `apa_reference` (an older answer) | the stored title, plus `(p. <page>)` — never blank |
+| neither | `Untitled source` |
+
+A source whose `document_id` no longer resolves in `documents` has the literal marker
+`not in this project any more` appended, and is counted on the cover under unresolved items. A source with
+no `document_id` at all (a web fallback) never had a project document, so it is not marked. Nothing is
+silently dropped and nothing is invented — **including for answers saved before this rule existed**, which
+carry a `document_id` but sometimes no label.
 
 ---
 
@@ -286,11 +310,15 @@ The knowledge-graph visual. Anything requiring network.
 - [x] 02 — one approach chosen and defended; the deliberately-rejected trade-off named (§5, §6)
 - [x] 03 — both artifacts described from the researcher's side: what she receives, where she starts, while it runs, when it fails (§7)
 - [x] 04 — missing metadata and citations to deleted documents shown honestly (§8)
-- [ ] 05 — readable in one sitting (under 15 minutes) and approved by a reviewer before implementation — readable; approver Benjamin Haruna Bala (@benjaminharuna1), sign-off pending (see §12, §13).
+- [ ] 05 — readable in one sitting (under 15 minutes) and approved by a reviewer before implementation — **not satisfied**: the proposal is readable, but no capable reviewer is assigned and implementation began before approval (see §12, §13).
 
 If this is approved, the implementation work is: the snapshot, the reference-list and dossier renderers,
-the conversation renderer, the Export control and the two conversation buttons, the `core/citations.py`
-extraction, and the `run_in_threadpool` fix on the existing export routes.
+the conversation renderer, the Export control and the two conversation buttons, and the `core/citations.py`
+extraction.
+
+**Not in this work:** the `run_in_threadpool` defect named in §2 stands as an observation on the two existing
+literature export routes. This ticket leaves those routes exactly as they are; fixing them is scheduled
+separately, or needs an explicit exception taken here.
 
 ---
 
@@ -303,25 +331,24 @@ extraction, and the `run_in_threadpool` fix on the existing export routes.
 | Review finding | The sprint's R3 names two artifacts — a reference list *and* a session report. The earlier revision had misread it as paper-only and left the deleted-document case unaddressed. |
 | Resolution | This proposal designates the chat half its own `conversation` resource and reinstates the deleted-document rule (§8); §7 describes both artifacts from the researcher's side. |
 | Scope | Implementation is out of scope for FRTR-001 (§10). It proceeds under its own ticket, from a separate branch, once this proposal is approved. |
-| Sign-off | **Pending** — approver Benjamin Haruna Bala (@benjaminharuna1); sign-off not yet given. |
+| Sign-off | **Pending** — approver _unassigned_. |
 
-Process note: the implementation was written ahead of this approval and is parked on its own branch,
-`feat/export-implementation`, unmerged. Approving the proposal here is what permits that branch to merge —
-so the sequencing boundary, decision before build, is restored at the merge, and FRTR-001 ships the
-proposal only.
+Process note, stated plainly: **criterion 05 was not met.** Export implementation began before this proposal
+was approved, which is the exact thing 05 exists to prevent. There is no reframing that repairs that — the
+honest record is that the gate was missed. The implementation is unmerged on `feat/export-implementation`,
+and FRTR-001 ships the proposal only. 05 closes when a reviewer who can reject is named and signs off.
 
 ---
 
 ## 13. Open decisions (what the review is actually deciding)
 
-Because the code was written ahead of approval, the review is not ratifying a plan — it is deciding five
-things that are still open. The implementation sits on a separate, unmerged branch, so approval is a real
-choice. Each decision is reversible, and the reversal cost is stated so that rejecting one is a real option
-rather than "rip out 72 files".
+The implementation is unmerged on a separate branch, so these five are still genuinely open — but that does
+not undo the missed gate; it only keeps the miss off `main`. Each decision is reversible, and the reversal
+cost is stated so that rejecting one is a real option rather than "rip out 72 files".
 
 | # | Decision | Options | Recommendation | Cost to reverse |
 |---|---|---|---|---|
-| 1 | **Merge sequencing** | (a) merge proposal and implementation together; (b) ship the proposal-only PR now, and open the implementation PR from `feat/export-implementation` after approval | **(b)** — restores what criterion 05 protects | none; it is ordering, not code |
+| 1 | **Merge sequencing** | (a) merge proposal and implementation together; (b) ship the proposal-only PR now, and open the implementation PR from `feat/export-implementation` after approval | **(b)** — limits the missed gate to an unmerged branch | none; it is ordering, not code |
 | 2 | **PDF export** | (a) keep it deferred; (b) build it — bundled converter or a ReportLab re-layout | **(a) for now**, as its own ticket | (b) is hundreds of MB or a second layout: the §6 trade-off |
 | 3 | **Conversation scope** | (a) current session only; (b) all sessions in the project | **(a)** | small — an endpoint family plus a UI entry point |
 | 4 | **Conversation formats** | (a) `.docx` only; (b) add `.md` / `.xlsx` | **(a)**; `ConversationFormat` is the seam | small — one new renderer per format |
