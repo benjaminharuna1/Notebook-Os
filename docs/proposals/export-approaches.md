@@ -1,6 +1,7 @@
 # Export Proposal — Getting the Researcher's Work Out of the App
 
-**Status:** revised after review — the session report is restored as the sprint's second artifact. Awaiting final reviewer sign-off on §7 (see the review log, §12).
+**Status:** revised after review — the session report is restored as the sprint's second artifact. Awaiting sign-off (see §12).
+**Reviewer:** _unassigned_ — **name the approver here.** This is the ticket's open question; until a person owns it, the gate cannot be satisfied by anyone. Sign-off is required **before the implementation merges**, not before it is written — the code was written first, so the merge is the boundary the gate still protects (see §13).
 **Scope:** the whole sprint's export work. Every later export ticket implements what this document decides.
 **Decision up front:** one server-side **Export Snapshot** assembled from SQLite, rendered on demand by thin
 per-format writers, delivered as **two** artifacts — a **reference list** and a **session report** — plus a
@@ -286,7 +287,7 @@ The knowledge-graph visual. Anything requiring network.
 - [x] 02 — one approach chosen and defended; the deliberately-rejected trade-off named (§5, §6)
 - [x] 03 — both artifacts described from the researcher's side: what she receives, where she starts, while it runs, when it fails (§7)
 - [x] 04 — missing metadata and citations to deleted documents shown honestly (§8, implemented in `conversation.py`)
-- [ ] 05 — readable in one sitting and approved by a reviewer before implementation — readable, sign-off **pending**; implementation preceded approval (see §12)
+- [ ] 05 — readable in one sitting and approved by a reviewer before implementation — readable; implementation preceded approval, so the gate is enforced at the **merge** boundary instead. Approver: _unassigned_ (see §12, §13).
 
 If this is approved, the implementation work is: the snapshot, the reference-list and dossier renderers,
 the conversation renderer, the Export control and the two conversation buttons, the `core/citations.py`
@@ -302,8 +303,27 @@ extraction, and the `run_in_threadpool` fix on the existing export routes.
 | First implementation | Saved conversations were removed from every artifact and the §8 deleted-document rules deleted; the contract was written as "documents only". |
 | Review finding | The sprint's R3 names two artifacts — a reference list *and* a session report. The branch had misread it as paper-only and left the deleted-document case unaddressed. |
 | Resolution | The `conversation` resource was added (`conversation.py`), the deleted-document rule reinstated (§8), and §7 rewritten to describe both artifacts from the researcher's side. |
-| Sign-off | **Pending** — reviewer approval on the revised §7. |
+| Sign-off | **Pending** — approver _unassigned_. Approval must precede the merge; the gate now sits at the merge boundary (see §13). |
 
 Process note, stated plainly: implementation began before this proposal was approved, which is the
 deviation criterion 05 exists to prevent. The record above keeps that visible rather than implying the
 gate was met in order.
+
+---
+
+## 13. Open decisions (what the review is actually deciding)
+
+Because the code was written first, the review is not ratifying a plan — it is deciding five things that
+are still open. Each is reversible, and the reversal cost is stated so that rejecting one is a real
+option rather than "rip out 72 files".
+
+| # | Decision | Options | Recommendation | Cost to reverse |
+|---|---|---|---|---|
+| 1 | **Merge sequencing** | (a) merge proposal and implementation together; (b) gate the merge — the proposal PR is approved first, the implementation PR after | **(b)** — restores what criterion 05 protects | none; it is ordering, not code |
+| 2 | **PDF export** | (a) keep it deferred; (b) build it — bundled converter or a ReportLab re-layout | **(a) for now**, as its own ticket | (b) is hundreds of MB or a second layout: the §6 trade-off |
+| 3 | **Conversation scope** | (a) current session only; (b) all sessions in the project | **(a)** | small — an endpoint family plus a UI entry point |
+| 4 | **Conversation formats** | (a) `.docx` only; (b) add `.md` / `.xlsx` | **(a)**; `ConversationFormat` is the seam | small — one new renderer per format |
+| 5 | **Resource boundary** | (a) the conversation is its own resource; (b) fold it back into the dossier | **(a)** — a deleted-document citation needs a resource that can mark it | small — `conversation.py`, one endpoint, two buttons |
+
+If the reviewer rejects any of 2–5, the change is isolated: a new module, two UI mount points, and one
+core extraction. Nothing here is a one-way door.
