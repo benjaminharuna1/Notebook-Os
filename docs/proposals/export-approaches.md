@@ -1,7 +1,7 @@
 # Export Proposal — Getting the Researcher's Work Out of the App
 
-**Status:** draft proposal — awaiting reviewer assignment and approval. FRTR-001 delivers this document only; the implementation proceeds under its own ticket once this is approved.
-**Reviewer:** _unassigned_ — **name the approver here.** Until a person owns it, the gate cannot be satisfied. Sign-off is required before the implementation begins (see §13).
+**Status:** draft proposal — reviewer assigned, awaiting sign-off. FRTR-001 delivers this document only; the implementation proceeds under its own ticket once this is approved.
+**Reviewer:** Benjamin Haruna Bala (@benjaminharuna1). The named approver; sign-off is required before the implementation begins (see §13).
 **Scope:** the whole sprint's export work. Every later export ticket implements what this document decides.
 **Decision up front:** one server-side **Export Snapshot** assembled from SQLite, rendered on demand by thin
 per-format writers, delivered as **two** artifacts — a **reference list** and a **session report** — plus a
@@ -286,7 +286,7 @@ The knowledge-graph visual. Anything requiring network.
 - [x] 02 — one approach chosen and defended; the deliberately-rejected trade-off named (§5, §6)
 - [x] 03 — both artifacts described from the researcher's side: what she receives, where she starts, while it runs, when it fails (§7)
 - [x] 04 — missing metadata and citations to deleted documents shown honestly (§8)
-- [ ] 05 — readable in one sitting (under 15 minutes) and approved by a reviewer before implementation — readable; approver _unassigned_ (see §12, §13).
+- [ ] 05 — readable in one sitting (under 15 minutes) and approved by a reviewer before implementation — readable; approver Benjamin Haruna Bala (@benjaminharuna1), sign-off pending (see §12, §13).
 
 If this is approved, the implementation work is: the snapshot, the reference-list and dossier renderers,
 the conversation renderer, the Export control and the two conversation buttons, the `core/citations.py`
@@ -303,7 +303,7 @@ extraction, and the `run_in_threadpool` fix on the existing export routes.
 | Review finding | The sprint's R3 names two artifacts — a reference list *and* a session report. The earlier revision had misread it as paper-only and left the deleted-document case unaddressed. |
 | Resolution | This proposal designates the chat half its own `conversation` resource and reinstates the deleted-document rule (§8); §7 describes both artifacts from the researcher's side. |
 | Scope | Implementation is out of scope for FRTR-001 (§10). It proceeds under its own ticket, from a separate branch, once this proposal is approved. |
-| Sign-off | **Pending** — approver _unassigned_. |
+| Sign-off | **Pending** — approver Benjamin Haruna Bala (@benjaminharuna1); sign-off not yet given. |
 
 Process note: the implementation was written ahead of this approval and is parked on its own branch,
 `feat/export-implementation`, unmerged. Approving the proposal here is what permits that branch to merge —
